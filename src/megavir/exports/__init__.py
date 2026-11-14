@@ -259,7 +259,49 @@ for k, v in exp.items():
 print("\\nAll numbers reproduced." if ok else "\\nSome numbers differ: please report this.")"""
 
 
+def related_csv(result: dict) -> bytes:
+    rel = result["relationship"]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["# MegavirTrace: moves together (related, not caused by)"])
+    w.writerow(["# Headline", result["verdict"]["headline"]])
+    for x in result["verdict"]["sentences"]:
+        w.writerow(["# Finding", x])
+    for x in result["verdict"]["caveats"]:
+        w.writerow(["# Caveat", x])
+    for side in ("a", "b"):
+        pv = result["provenance"][side]
+        w.writerow(
+            [
+                f"# Source {side.upper()}",
+                pv["product"],
+                pv.get("doi") or pv.get("paper_doi") or "",
+                pv["citation"],
+            ]
+        )
+    w.writerow([])
+    w.writerow(["lag_months (B follows A when positive)", "r", "p_single_lag", "pairs"])
+    for row in zip(rel["lags"], rel["r"], rel["p"], rel["n"], strict=True):
+        w.writerow(row)
+    w.writerow([])
+    w.writerow(["month", "A standardized anomaly", "B standardized anomaly"])
+    for row in zip(rel["labels"], rel["a_std"], rel["b_std"], strict=True):
+        w.writerow(row)
+    return buf.getvalue().encode("utf-8")
+
+
+class ExportNotAvailable(ValueError):
+    pass
+
+
 def export_report(result: dict, fmt: str) -> tuple[bytes, str, str]:
+    if result.get("kind") == "related":
+        name = f"megavirtrace_related_{result['id'][:8]}"
+        if fmt == "csv":
+            return related_csv(result), "text/csv; charset=utf-8", name + ".csv"
+        if fmt == "json":
+            return json.dumps(result, indent=1).encode(), "application/json", name + ".json"
+        raise ExportNotAvailable("This result can be downloaded as CSV or JSON.")
     slug = _slug(result)
     if fmt == "csv":
         return to_csv(result), "text/csv; charset=utf-8", slug + ".csv"

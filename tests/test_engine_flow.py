@@ -148,3 +148,24 @@ def test_short_records_are_not_tested_for_pace():
     t = np.arange(12) + 2010.5
     st = analyse_trend(t, 0.1 * t + np.sin(t), np.floor(t).astype(int), [str(int(x)) for x in t])
     assert st.acceleration["tested"] is False
+
+
+def test_related_verdict_wording():
+    from megavir.engine.verdict import related_verdict
+
+    rel = {
+        "best_lag": 1,
+        "best_r": -0.42,
+        "p_adjusted": 0.01,
+        "n_lags_tested": 25,
+        "significant": True,
+        "same_direction": False,
+    }
+    v = related_verdict(rel, "Rainfall", "Topsoil moisture (0–10 cm)", "Testland")
+    assert v["headline"] == "Rainfall and topsoil moisture (0–10 cm) in Testland move together."
+    assert "below normal about a month later" in v["sentences"][0]
+    assert any("not caused by" in c for c in v["caveats"])
+    rel.update({"significant": False, "best_lag": -3})
+    v = related_verdict(rel, "Rainfall", "Topsoil moisture (0–10 cm)", "Testland")
+    assert v["headline"].startswith("No clear relationship between rainfall")
+    assert "about 3 months later" in v["sentences"][0]

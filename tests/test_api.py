@@ -274,3 +274,24 @@ def test_gappy_records_default_to_monthly(client):
         "/analysis/trend", json={"variable": "air_temp", "region": {"place": "country:TST"}}, headers=ORIGIN
     )
     assert r.json()["series"]["mode"] == "annual"
+
+
+def test_moves_together_endpoint(client):
+    body = {
+        "variable_a": "air_temp",
+        "variable_b": "daily_high",
+        "region": {"place": "country:TST"},
+        "max_lag": 6,
+    }
+    r = client.post("/analysis/related", json=body, headers=ORIGIN)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    rel = d["relationship"]
+    assert len(rel["lags"]) == 13 and rel["n_lags_tested"] == 13
+    assert d["verdict"]["caveats"][0].startswith("SYNTHETIC DATA")
+    assert any("not caused by" in c for c in d["verdict"]["caveats"])
+    csv = client.get(f"/reports/{d['id']}/export", params={"format": "csv"})
+    assert csv.status_code == 200 and b"lag_months" in csv.content
+    assert client.get(f"/reports/{d['id']}/export", params={"format": "pdf"}).status_code == 422
+    same = client.post("/analysis/related", json={**body, "variable_b": "air_temp"}, headers=ORIGIN)
+    assert same.status_code == 422

@@ -377,3 +377,94 @@ def compare_verdict(
         "shown": shown,
         "lang": lang,
     }
+
+
+# --------------------------------------------------------------------------------------
+# Moves together (FR11)
+# --------------------------------------------------------------------------------------
+
+RELATED_TEMPLATES = {
+    "en": {
+        "head_sig": "{A} and {B} in {place} move together.",
+        "head_nosig": "No clear relationship between {a} and {B} in {place}.",
+        "same": "When {X} is above normal, {Y} tends to be {dir} normal {when} (r = {r}).",
+        "above": "above",
+        "below": "below",
+        "same_month": "in the same month",
+        "later": "about {k} months later",
+        "later_one": "about a month later",
+        "how": "This compares month-to-month ups and downs after removing each seasonal cycle and long-term trend. "
+        "The strongest of the {L} lags tried has p {p} after allowing for that search and for how alike "
+        "neighbouring months are.",
+        "nosig": "The strongest link, {when}, is r = {r}, which could be chance (p {p} after allowing for the {L} lags "
+        "tried and for how alike neighbouring months are).",
+        "cav_related": "Related, not caused by: both may follow something else, such as the same weather, El Niño or "
+        "the timing of the seasons.",
+    },
+    "es": {
+        "head_sig": "{A} y {B} en {place} se mueven juntos.",
+        "head_nosig": "Sin relación clara entre {a} y {B} en {place}.",
+        "same": "Cuando {X} está por encima de lo normal, {Y} tiende a estar por {dir} de lo normal {when} (r = {r}).",
+        "above": "encima",
+        "below": "debajo",
+        "same_month": "el mismo mes",
+        "later": "unos {k} meses después",
+        "later_one": "aproximadamente un mes después",
+        "how": "Se comparan los altibajos de un mes a otro tras quitar el ciclo estacional y la tendencia de cada "
+        "variable. El más fuerte de los {L} desfases probados tiene p {p} teniendo en cuenta esa búsqueda y "
+        "cuánto se parecen los meses vecinos.",
+        "nosig": "El vínculo más fuerte, {when}, es r = {r}, que podría ser casualidad (p {p} teniendo en cuenta los "
+        "{L} desfases probados y cuánto se parecen los meses vecinos).",
+        "cav_related": "Relacionado no significa causado: ambos pueden seguir a otra cosa, como el mismo tiempo, El Niño "
+        "o el calendario de las estaciones.",
+    },
+}
+
+
+def related_verdict(
+    rel: dict, name_a: str, name_b: str, place: str, lang: str = "en", data_kind: str = "real"
+) -> dict:
+    t = RELATED_TEMPLATES.get(lang, RELATED_TEMPLATES["en"])
+    base = TEMPLATES.get(lang, TEMPLATES["en"])
+    k = int(rel["best_lag"])
+    X, Y = (name_a, name_b) if k >= 0 else (name_b, name_a)
+    when = t["same_month"] if k == 0 else t["later_one"] if abs(k) == 1 else t["later"].format(k=abs(k))
+    shown = {
+        "r": fmt_num(rel["best_r"], sig=2, lang=lang),
+        "p": fmt_p(rel["p_adjusted"], lang),
+        "L": str(rel["n_lags_tested"]),
+        "lag": str(k),
+    }
+    low_a = name_a[:1].lower() + name_a[1:] if lang == "en" else name_a
+    low_b = name_b[:1].lower() + name_b[1:] if lang == "en" else name_b
+    common = {"A": _cap(name_a), "a": low_a, "B": low_b, "place": place}
+    if rel["significant"]:
+        status = "significant"
+        headline = t["head_sig"].format(**common)
+        sentences = [
+            t["same"].format(
+                X=X.lower(),
+                Y=Y.lower(),
+                dir=t["above"] if rel["same_direction"] else t["below"],
+                when=when,
+                r=shown["r"],
+            ),
+            t["how"].format(L=shown["L"], p=shown["p"]),
+        ]
+    else:
+        status = "not_significant"
+        headline = t["head_nosig"].format(**common)
+        sentences = [t["nosig"].format(when=when, r=shown["r"], p=shown["p"], L=shown["L"])]
+    caveats = [t["cav_related"]]
+    dc = data_caveat(data_kind, lang)
+    if dc:
+        caveats.insert(0, dc)
+    caveats.append(base["cav_cause"])
+    return {
+        "status": status,
+        "headline": headline,
+        "sentences": sentences,
+        "caveats": caveats,
+        "shown": shown,
+        "lang": lang,
+    }

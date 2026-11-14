@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Nav from "@/components/Nav";
@@ -17,10 +18,10 @@ const themeScript = `try{var t=localStorage.getItem("mt-theme");if(t==="light"||
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body>
+        <Script id="mt-theme" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
         <a className="skip-link" href="#main">
           Skip to content
         </a>

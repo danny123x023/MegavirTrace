@@ -110,7 +110,27 @@ cancels, so correlated regions are not under-tested and anti-correlated ones are
 the difference per decade, its 95% interval, p, and the smallest difference the record could detect:
 (t₀.₉₇₅ + t₀.₈₀) × SE_adj, for 80% power.
 
-## 6. Ground versus satellite: NASA GLOBE
+## 6. Moves together: relationships between variables
+
+To ask whether two variables rise and fall together in one place, each regional monthly series becomes
+anomalies (seasonal cycle removed) and is detrended. Without this, shared seasons and trends make almost any
+two series correlate. We then compute the correlation r_k with variable B shifted k months after A, for
+|k| ≤ L (L ≤ 24).
+
+Neighbouring months are alike, and removing monthly means leaves its own pattern (correlation 12, 24 and
+36 months apart). The variance of r for unrelated series is therefore taken from Bartlett's formula,
+Var(r) = (1 + 2 Σ_j ρ_A(j) ρ_B(j)) / n, summed to 36 months, with the 13 degrees of freedom used by each series
+removed. The lag-1 terms use a bias correction measured by simulation: r₁ = (n r̂₁ + 1)/(n − 5.5). The
+strongest lag's p-value is multiplied by the number of lags tried (Bonferroni).
+
+A first version with only the lag-1 (Bretherton et al. 1999) effective sample size gave 6–9% false claims for
+unrelated series. The version above gives at most 3.5% (n = 120 and 240 months, r₁ = 0–0.9) and finds a real
+3-month lead every time. Results are always labelled "related, not caused by".
+
+Bretherton, C. S., Widmann, M., Dymnikov, V. P., Wallace, J. M. & Bladé, I. (1999). *J. Climate* 12,
+1990–2009. doi:10.1175/1520-0442(1999)012<1990:TENOSD>2.0.CO;2
+
+## 7. Ground versus satellite: NASA GLOBE
 
 For temperature and rainfall, observations from the GLOBE Program (schools and citizen scientists) for the
 same region are fetched from the GLOBE API. Air temperature uses the daily high and low; precipitation uses
@@ -127,7 +147,7 @@ we report their correlation. Over Texas, 18 sites and 29,862 readings from 2012�
 r = 0.89 over 178 months. GLOBE values are point measurements by volunteers at changing sites, so they are
 shown as context and never enter the trend tests.
 
-## 7. Validation
+## 8. Validation
 
 | Check | Result |
 | --- | --- |
@@ -136,6 +156,7 @@ shown as context and never enter the trend tests.
 | False alarms, 2,000 AR(1) series per setting, n = 20 and 30 | 3.5–4.1% at r₁ = 0.3 (target ≤ 5%); 4.4–4.7% at r₁ = 0.5 (target ≤ 7%) |
 | 95% interval coverage of a synthetic trend | 91–98% |
 | Difference test, correlation −0.5 to 0.95 | 3.7–4.8% false alarms |
+| Moves together: unrelated series sharing a season and a trend, 25 lags searched | ≤ 3.5% false claims; a real 3-month lead found at the right lag every time |
 | "Speeding up" claims for a straight trend with AR(1) noise, n = 15–45 | ≤ 3.3% at r₁ = 0.3, ≤ 4.8% at r₁ = 0.5; real acceleration found in > 90% of 45-year records |
 | Vectorised cell engine vs per-series engine | Same slope and p |
 | GISTEMP global series vs NASA GLB.Ts+dSST (1880–2025) | r = 0.9997, mean absolute difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year |
@@ -146,7 +167,7 @@ Still to do once Earthdata access is configured: regional IMERG and MERRA-2 seri
 averages for the test box (targets r ≥ 0.98 and mean difference within 5%), on the test data and again on
 the full download.
 
-## 8. Limitations
+## 9. Limitations
 
 A trend is not a cause. Records of 20–25 years detect only large trends against year-to-year variability, and
 the verdict says so. Reanalysis and land-model variables (MERRA-2, GLDAS) are model estimates constrained by

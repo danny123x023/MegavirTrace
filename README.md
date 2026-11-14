@@ -15,6 +15,9 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
   showing where inside the region the change is happening. The map switches between a flat 2D map and a 3D globe.
 - **Compare:** tests whether two regions' trends really differ, using the trend of their difference series.
   It also finds pairs of preset regions with opposite trends.
+- **Moves together:** do two variables rise and fall together in one place, possibly with a delay? Seasonal
+  cycles and trends are removed first, and significance allows for month-to-month memory and for the lags
+  searched. Always labelled "related, not caused by".
 - **Where do I start?** suggests variables by place type and curiosity. It can also test every variable for
   one place, with false-discovery control across the variables.
 - **Ask the AI scientist (optional):** the AI turns a question into engine runs, then explains the results.
@@ -157,7 +160,7 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 | FR12 | Variable guidance and scan | Should | Done |
 | FR14 | NASA GLOBE ground data | Should | Done: GLOBE air temperature and rain gauges beside the series, as monthly anomalies with their correlation |
 | FR16 | Downloads | Should | Done; the notebook reproduces every number |
-| FR11 | "Moves together" explorer | Could | Not started |
+| FR11 | "Moves together" explorer | Could | Done: lagged relationships with memory-aware significance; false "related" claims ≤ 3.5% in Monte Carlo |
 | FR13 | AI scientist and tutor | Could | Done; tested with fake clients, not yet with a live service |
 | FR15 | CMIP6 projections | Could | Not started |
 | FR17 | Embeds and open API | Could | Done |

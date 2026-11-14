@@ -206,6 +206,22 @@ def analysis_scan(body: ScanIn):
         return service.run_scan(conn, {"region": _region(body.region), "lang": body.lang})
 
 
+class RelatedIn(BaseModel):
+    variable_a: str = Field(max_length=40)
+    variable_b: str = Field(max_length=40)
+    region: RegionIn
+    max_lag: int = Field(12, ge=0, le=24)
+    lang: str = "en"
+
+
+@app.post("/analysis/related")
+def analysis_related(body: RelatedIn):
+    req = body.model_dump()
+    req["region"] = _region(body.region)
+    with connect() as conn:
+        return service.run_related(conn, req)
+
+
 @app.get("/analysis/opposites")
 def analysis_opposites(variable: str = Query(max_length=40), mode: str = "annual", lang: str = "en"):
     with connect() as conn:
@@ -250,7 +266,12 @@ def report_export(rid: str, format: str = Query("csv", pattern="^(csv|xlsx|pdf|i
         r = service.get_report(conn, rid)
     if not r:
         raise HTTPException(404, "unknown report")
-    content, media, filename = export_report(r["result"], format)
+    from megavir.exports import ExportNotAvailable
+
+    try:
+        content, media, filename = export_report(r["result"], format)
+    except ExportNotAvailable as e:
+        raise HTTPException(422, str(e)) from None
     return Response(
         content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )

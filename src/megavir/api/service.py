@@ -33,7 +33,7 @@ from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
 from megavir.places.geometry import apply_domain, cells_for
 from megavir.store import GridSpec, Version, active_versions, read_cells, read_mask
 
-ENGINE_VERSION = "2026.11-5"
+ENGINE_VERSION = "2026.11-6"
 MAX_MAP_CELLS = 40_000
 
 
@@ -672,3 +672,75 @@ def catalog_with_status(conn) -> dict:
 
 def grid_spec_of(v: Version) -> GridSpec:
     return v.spec
+
+
+# --------------------------------------------------------------------------------------
+# Moves together (FR11)
+# --------------------------------------------------------------------------------------
+
+
+def run_related(conn, raw: dict, use_cache: bool = True) -> dict:
+    from megavir.engine.related import lagged_relationship
+    from megavir.engine.verdict import related_verdict
+
+    va, vb = raw.get("variable_a"), raw.get("variable_b")
+    if va not in VARIABLES or vb not in VARIABLES:
+        raise AnalysisError("choose two known variables")
+    if va == vb:
+        raise AnalysisError("choose two different variables")
+    max_lag = int(raw.get("max_lag") if raw.get("max_lag") is not None else 12)
+    if not 0 <= max_lag <= 24:
+        raise AnalysisError("the lag can be 0 to 24 months")
+    region = raw.get("region") or {}
+    region = (
+        {"place": region["place"]}
+        if region.get("place")
+        else {
+            "bbox": [round(float(x), 4) for x in (region.get("bbox") or [])],
+            "name": (region.get("name") or "")[:80],
+        }
+    )
+    lang = raw.get("lang") if raw.get("lang") in LANGUAGES else "en"
+    req = {"variable_a": va, "variable_b": vb, "region": region, "max_lag": max_lag, "lang": lang}
+    versions = active_versions(conn)
+    if va not in versions or vb not in versions:
+        raise AnalysisError("both variables must be loaded")
+    ids = [versions[va].id, versions[vb].id]
+    fid = fingerprint("related", req, ids)
+    if use_cache and (hit := cached(conn, fid)):
+        return hit
+    reg = resolve_region(conn, region)
+    da = regional_monthly(conn, va, reg)
+    db = regional_monthly(conn, vb, reg)
+    months = np.union1d(da.months, db.months)
+    a = np.full(months.size, np.nan)
+    b = np.full(months.size, np.nan)
+    a[np.searchsorted(months, da.months)] = np.where(da.coverage >= MIN_COVERAGE, da.values, np.nan)
+    b[np.searchsorted(months, db.months)] = np.where(db.coverage >= MIN_COVERAGE, db.values, np.nan)
+    rel = lagged_relationship(months, a, b, max_lag)
+    if not rel.get("tested"):
+        raise AnalysisError(
+            f"Cannot compare {VARIABLES[va].name.lower()} and {VARIABLES[vb].name.lower()} here: {rel.get('reason')}."
+        )
+    kinds = {versions[va].kind, versions[vb].kind}
+    kind = "synthetic" if "synthetic" in kinds else "test" if "test" in kinds else "real"
+    verdict = related_verdict(rel, VARIABLES[va].name, VARIABLES[vb].name, reg.name, lang, kind)
+    result = _jsonable(
+        {
+            "id": fid,
+            "kind": "related",
+            "request": req,
+            "variable_a": VARIABLES[va].to_dict(),
+            "variable_b": VARIABLES[vb].to_dict(),
+            "region": reg.public(),
+            "relationship": {**rel, "labels": [month_label(int(m)) for m in rel["months"]]},
+            "verdict": verdict,
+            "data_kind": kind,
+            "provenance": {
+                "a": provenance(va, versions[va], fid),
+                "b": provenance(vb, versions[vb], fid),
+            },
+        }
+    )
+    store(conn, fid, "related", req, ids, result)
+    return result

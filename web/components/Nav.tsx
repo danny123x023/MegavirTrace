@@ -7,9 +7,10 @@ import { useEffect, useState } from "react";
 const LINKS = [
   { href: "/", label: "Explore" },
   { href: "/compare", label: "Compare" },
-  { href: "/start", label: "Where do I start?" },
-  { href: "/ask", label: "Ask the AI scientist" },
-  { href: "/methods", label: "Method & data" },
+  { href: "/related", label: "Moves together" },
+  { href: "/start", label: "Start here" },
+  { href: "/ask", label: "Ask the AI" },
+  { href: "/methods", label: "Method" },
 ];
 
 export default function Nav() {

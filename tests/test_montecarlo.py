@@ -131,3 +131,34 @@ def test_real_acceleration_is_found():
     res = [acceleration(t, x) for x in X]
     assert np.mean([r["significant"] for r in res]) > 0.9
     assert all(r["kind"] == "speeding_up" for r in res if r["significant"])
+
+
+@pytest.mark.parametrize("n", [120, 240])
+@pytest.mark.parametrize("phi", [0.0, 0.3, 0.7])
+def test_no_false_relationships(n, phi):
+    """Unrelated series that share a season and a trend must rarely be called related (lag search included)."""
+    from megavir.engine.related import lagged_relationship
+
+    rng = np.random.default_rng(900 + n + int(phi * 10))
+    months = np.arange(2000 * 12, 2000 * 12 + n)
+    season = 5 * np.sin(2 * np.pi * (months % 12) / 12)
+    A = ar1(rng, n, phi, RUNS) + season + 0.01 * months
+    B = ar1(rng, n, phi, RUNS) + 2 * season
+    rate = np.mean([lagged_relationship(months, a, b, 12)["significant"] for a, b in zip(A, B, strict=True)])
+    assert rate <= 0.05, f"false relationships {rate:.3f}"
+
+
+def test_a_real_lead_is_found_at_the_right_lag():
+    from megavir.engine.related import lagged_relationship
+
+    rng = np.random.default_rng(12)
+    months = np.arange(2000 * 12, 2000 * 12 + 240)
+    season = 5 * np.sin(2 * np.pi * (months % 12) / 12)
+    found = 0
+    for _ in range(50):
+        base = ar1(rng, 243, 0.7, 1)[0]
+        a = season + base[3:] + 0.8 * rng.standard_normal(240)
+        b = season + base[:240] + 0.8 * rng.standard_normal(240)
+        res = lagged_relationship(months, a, b, 12)
+        found += res["significant"] and res["best_lag"] == 3 and res["same_direction"]
+    assert found >= 45

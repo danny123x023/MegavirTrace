@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const PAGES = ["/", "/compare", "/start", "/ask", "/methods"];
+const PAGES = ["/", "/compare", "/related", "/start", "/ask", "/methods"];
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} theme`, () => {
@@ -11,7 +11,7 @@ for (const scheme of ["light", "dark"] as const) {
         const errors: string[] = [];
         page.on("pageerror", (e) => errors.push(String(e)));
         await page.goto(path);
-        if (path === "/" || path === "/compare") await expect(page.locator(".verdict h2").first()).toBeVisible();
+        if (path === "/" || path === "/compare" || path === "/related") await expect(page.locator(".verdict h2").first()).toBeVisible();
         else await page.waitForLoadState("load");
         await page.waitForTimeout(1500);
         const res = await new AxeBuilder({ page })
@@ -69,4 +69,11 @@ test("embed card renders without site chrome", async ({ page }) => {
 test("API keeps the strict Origin check behind the proxy", async ({ request }) => {
   const r = await request.post("/api/analysis/trend", { data: { variable: "temp_change", region: { place: "preset:globe" } }, headers: { Origin: "https://evil.example" } });
   expect(r.status()).toBe(403);
+});
+
+test("moves together: verdict, lag chart and the not-a-cause caveat", async ({ page }) => {
+  await page.goto("/related");
+  await expect(page.locator(".verdict h2")).toContainText(/move together|No clear relationship/);
+  await expect(page.getByText(/not caused by/).first()).toBeVisible();
+  await expect(page.getByRole("img", { name: /Correlation by lag/ })).toBeVisible();
 });
