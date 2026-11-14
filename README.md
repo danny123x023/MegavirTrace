@@ -26,6 +26,9 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 - **Ground truth from NASA GLOBE:** for temperature and rainfall, measurements by GLOBE schools and volunteers in
   the same place are shown beside the series as monthly anomalies, with how well the two move together.
   Over Texas, 18 GLOBE sites track GISTEMP with r = 0.89. This is context only and never enters the trend tests.
+- **Climate projections (context):** for temperature and rainfall, what five NASA NEX-GDDP-CMIP6 models simulate
+  under SSP2-4.5 and SSP5-8.5, beside the observed change. Computed on NASA's servers in about 2 minutes per
+  region the first time, then stored. Not a forecast, and never part of the trend tests.
 - **English and Spanish, offline, phone-first:** switch language from the header (verdicts come from Spanish
   templates with Spanish number formats). After one visit, pages and recent results open without a connection.
 - **Take it away:** download CSV, Excel, PDF, or a notebook that recomputes every number with NumPy and SciPy
@@ -166,13 +169,13 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 | FR16 | Downloads | Should | Done; the notebook reproduces every number |
 | FR11 | "Moves together" explorer | Could | Done: lagged relationships with memory-aware significance; false "related" claims ≤ 3.5% in Monte Carlo |
 | FR13 | AI scientist and tutor | Could | Done; tested with fake clients, not yet with a live service |
-| FR15 | CMIP6 projections | Could | Not started |
+| FR15 | CMIP6 projections | Could | Done: NASA NEX-GDDP-CMIP6, 5 models, SSP2-4.5 and SSP5-8.5, sample years, each model's change from its own baseline, beside the observed change, with strong caveats |
 | FR17 | Embeds and open API | Could | Done |
 | FR18 | Methods paper and contributor guide | Could | Drafts in `docs/` and `CONTRIBUTING.md` |
 | FR19 | Languages, offline | Could | Done: English and Spanish (interface, catalog and verdicts); works offline after one visit (service worker plus recent results kept on the device); phone-first layout checked at 390 px |
 
 ## Credits and licences
 
-Data: NASA (GES DISC, LP DAAC, PO.DAAC, GISS, GSFC, NCCS) and the NASA [GLOBE Program](https://www.globe.gov). Each product is cited with its DOI in the app and
+Data: NASA (GES DISC, LP DAAC, PO.DAAC, GISS, GSFC, NCCS) the NASA [GLOBE Program](https://www.globe.gov) and NASA NEX-GDDP-CMIP6 (via NCCS). Each product is cited with its DOI in the app and
 the exports. Place names: [GeoNames](https://www.geonames.org) (CC BY 4.0). Outlines and land:
 [Natural Earth](https://www.naturalearthdata.com) (public domain). Code: Apache 2.0 (see `LICENSE`).

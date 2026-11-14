@@ -480,3 +480,48 @@ def related_verdict(
         "shown": shown,
         "lang": lang,
     }
+
+
+# --------------------------------------------------------------------------------------
+# Climate projections (FR15): template summary of the ensemble ranges
+# --------------------------------------------------------------------------------------
+
+PROJ_TEMPLATES = {
+    "en": {
+        "line": "{scenario}: around {year}, the {n} models put {place} at {med} {unit} {versus} (range {lo} to {hi}).",
+        "versus": "compared with 1995–2010",
+        "none": "No projection values were available for this region.",
+    },
+    "es": {
+        "line": "{scenario}: hacia {year}, los {n} modelos sitúan {place} en {med} {unit} {versus} (rango {lo} a {hi}).",
+        "versus": "respecto a 1995–2010",
+        "none": "No hubo valores de proyección para esta región.",
+    },
+}
+PROJ_SCENARIOS_ES = {"ssp245": "SSP2-4.5 (camino intermedio)", "ssp585": "SSP5-8.5 (emisiones muy altas)"}
+
+
+def projection_summary(result: dict, place: str, lang: str = "en") -> list[str]:
+    t = PROJ_TEMPLATES.get(lang, PROJ_TEMPLATES["en"])
+    out = []
+    unit = result["units"]
+    for sc, s in result["scenarios"].items():
+        # the last sample year with values
+        k = next((i for i in range(len(result["years"]) - 1, -1, -1) if s["median"][i] is not None), None)
+        if k is None:
+            continue
+        label = PROJ_SCENARIOS_ES.get(sc, s["label"]) if lang == "es" else s["label"]
+        out.append(
+            t["line"].format(
+                scenario=label,
+                year=result["years"][k],
+                n=s["models"][k],
+                place=place,
+                med=fmt_signed(s["median"][k], lang=lang),
+                lo=fmt_signed(s["min"][k], lang=lang),
+                hi=fmt_signed(s["max"][k], lang=lang),
+                unit=unit,
+                versus=t["versus"],
+            )
+        )
+    return out or [t["none"]]

@@ -300,6 +300,57 @@ def context_globe(analysis_id: str = Query(min_length=8, max_length=64)):
             ) from None
 
 
+class ProjectionIn(BaseModel):
+    analysis_id: str = Field(min_length=8, max_length=64)
+
+
+def _trend_report(conn, analysis_id: str) -> dict:
+    rep = service.get_report(conn, analysis_id)
+    if not rep or rep["result"].get("kind") != "trend":
+        raise HTTPException(404, "unknown trend analysis")
+    return rep["result"]
+
+
+@app.post("/context/projections")
+def context_projections_start(body: ProjectionIn):
+    """Start (or reuse) the background NEX-GDDP-CMIP6 computation for an analysis's place and variable."""
+    from megavir.context.cmip6 import ProjectionError, start_job
+
+    with connect() as conn:
+        analysis = _trend_report(conn, body.analysis_id)
+    try:
+        return start_job(connect, analysis)
+    except ProjectionError as e:
+        raise HTTPException(422, str(e)) from None
+
+
+@app.get("/context/projections")
+def context_projections(analysis_id: str = Query(min_length=8, max_length=64), lang: str = "en"):
+    from megavir.context.cmip6 import ProjectionError, check_region, get_job, job_key
+    from megavir.engine.verdict import projection_summary
+
+    with connect() as conn:
+        analysis = _trend_report(conn, analysis_id)
+        try:
+            var, region = check_region(analysis)
+        except ProjectionError as e:
+            raise HTTPException(422, str(e)) from None
+        job = get_job(conn, job_key(var, region))
+    if not job:
+        return {"status": "not_started"}
+    out = {k: job[k] for k in ("status", "done", "total", "error")}
+    if job["status"] == "done" and job["result"]:
+        res = job["result"]
+        out["result"] = res
+        place = (
+            service.in_phrase(analysis["region"]["name"], "box", lang)
+            if lang == "es"
+            else analysis["region"]["name"]
+        )
+        out["summary"] = projection_summary(res, place, lang if lang in ("en", "es") else "en")
+    return out
+
+
 # --------------------------------------------------------------------------------------
 # AI scientist (optional; never computes)
 # --------------------------------------------------------------------------------------

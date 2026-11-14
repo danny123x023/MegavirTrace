@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EarthMap from "@/components/EarthMap";
 import GlobeCard, { type GlobeSite } from "@/components/GlobeCard";
+import ProjectionsCard from "@/components/ProjectionsCard";
 import { type Chosen, ModeControls, type ModeState, PlacePicker, VariablePicker } from "@/components/Pickers";
 import { Downloads, ExplainWithAI, StatTiles, VerdictCard } from "@/components/Result";
 import TrendChart from "@/components/TrendChart";
@@ -172,6 +173,7 @@ export default function ExploreClient() {
               </section>
               <ExplainWithAI id={result.id} />
               <GlobeCard analysisId={result.id} variable={result.variable.id} satelliteLabel={result.variable.source_badge} onSites={setGlobeSites} />
+              <ProjectionsCard analysisId={result.id} variable={result.variable.id} />
             </div>
           </div>
           <h2 style={{ marginTop: 20 }}>{t("The statistics")}</h2>

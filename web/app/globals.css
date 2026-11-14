@@ -13,6 +13,7 @@
   --border: rgba(11, 11, 11, 0.1);
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --series-3: #1baf7a;
   --accent: #256abf; /* links and focus: blue step 500, 5.3:1 on the page */
   --warning: #fab219;
   --warning-ink: #0b0b0b;
@@ -38,6 +39,7 @@
     --border: rgba(255, 255, 255, 0.1);
     --series-1: #3987e5;
     --series-2: #d95926;
+    --series-3: #199e70;
     --accent: #86b6ef;
     --diverging-mid: #383835;
     --land: #262624;
@@ -59,6 +61,7 @@
   --border: rgba(255, 255, 255, 0.1);
   --series-1: #3987e5;
   --series-2: #d95926;
+  --series-3: #199e70;
   --accent: #86b6ef;
   --diverging-mid: #383835;
   --land: #262624;

@@ -153,7 +153,26 @@ we report their correlation. Over Texas, 18 sites and 29,862 readings from 2012�
 r = 0.89 over 178 months. GLOBE values are point measurements by volunteers at changing sites, so they are
 shown as context and never enter the trend tests.
 
-## 8. Validation
+## 8. Climate projections beside the observed trend
+
+For temperature (tas, tasmax, tasmin) and rainfall (pr), NASA NEX-GDDP-CMIP6 projections (bias-corrected,
+downscaled to 0.25°) give context for the observed trend. The sample is documented and small, because each
+yearly daily file must be read on the NCCS THREDDS server (13–16 s per request):
+
+- 5 models with a wide spread of climate sensitivity (ACCESS-CM2, CESM2, MIROC6, MPI-ESM1-2-HR, UKESM1-0-LL);
+- baseline years 1995, 2000, 2005 and 2010 from each model's historical run;
+- years 2030, 2050, 2070 and 2090 under SSP2-4.5 and SSP5-8.5.
+
+Each file is subset to the region's box and averaged with cos(latitude) weights over the box and the year.
+Each model's change is measured from its own baseline (rainfall in percent), which removes model biases. The
+ensemble median and range are reported. The observed series is shown as its change from the same baseline years.
+
+The plain-language summary comes from fixed templates. For the Gulf Coast test box, around 2090 the models give
++2.9 °C (range +1.4 to +4.9) under SSP2-4.5 and +4.9 °C (+3.7 to +5.6) under SSP5-8.5, compared with 1995–2010.
+Single sample years include natural variability, so the ranges matter more than the medians. Projections are
+never part of the trend tests.
+
+## 9. Validation
 
 | Check | Result |
 | --- | --- |
@@ -176,7 +195,7 @@ points across the test box, weighted by cos(latitude), and compare with our stor
 MERRA-2 air temperature, Oct 2023 – Sep 2026: r = 0.9998, mean difference 1.6% (targets r ≥ 0.98, within 5%).
 IMERG rainfall is checked the same way once it is imported (`megavir-ingest giovanni-check rainfall`).
 
-## 9. Limitations
+## 10. Limitations
 
 A trend is not a cause. Records of 20–25 years detect only large trends against year-to-year variability, and
 the verdict says so. Reanalysis and land-model variables (MERRA-2, GLDAS) are model estimates constrained by

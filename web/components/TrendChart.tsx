@@ -10,6 +10,7 @@ export type ChartSeries = {
   color: string; // CSS var
   values: (number | null)[];
   markers?: boolean;
+  connect?: boolean; // draw through missing values (sparse sample years)
 };
 
 type Props = {
@@ -81,12 +82,12 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
   if (idx.length === 0) return <p className="muted">No values to plot.</p>;
   const { X, Y, yt, xt, fan } = geom;
 
-  const path = (vals: (number | null)[]) => {
+  const path = (vals: (number | null)[], connect = false) => {
     let d = "";
     let pen = false;
     for (const i of idx) {
       const v = vals[i];
-      if (v === null) { pen = false; continue; }
+      if (v === null) { if (!connect) pen = false; continue; }
       d += `${pen ? "L" : "M"}${X(t[i] as number).toFixed(1)},${Y(v).toFixed(1)}`;
       pen = true;
     }
@@ -192,8 +193,8 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
             )}
             {series.map((s) => (
               <g key={s.key}>
-                <path d={path(s.values)} fill="none" stroke={s.color} strokeWidth={many ? 1.25 : 2} strokeLinejoin="round" strokeLinecap="round" />
-                {s.markers !== false && !many && idx.map((i) => s.values[i] !== null && (
+                <path d={path(s.values, s.connect)} fill="none" stroke={s.color} strokeWidth={many ? 1.25 : 2} strokeLinejoin="round" strokeLinecap="round" />
+                {s.markers !== false && (!many || s.connect) && idx.map((i) => s.values[i] !== null && (
                   <circle key={i} cx={X(t[i] as number)} cy={Y(s.values[i] as number)} r={4} fill={s.color} stroke="var(--surface-1)" strokeWidth={2} />
                 ))}
               </g>
