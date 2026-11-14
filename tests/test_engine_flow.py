@@ -9,16 +9,15 @@ from megavir.engine.compare import compare_series
 from megavir.engine.stats import analyse_trend
 from megavir.engine.verdict import compare_verdict, fmt_num, fmt_signed, trend_verdict
 
-RNG = np.random.default_rng(4)
 
-
-def monthly(start=2001, years=24, trend=0.03, noise=0.3, seasonal=5.0):
+def monthly(start=2001, years=24, trend=0.03, noise=0.3, seasonal=5.0, seed=4):
+    # a fresh generator per call, so a test's data never depends on which tests ran before it
     idx = np.arange(month_index(start, 1), month_index(start + years - 1, 12) + 1)
     yrs = idx // 12 + (idx % 12) / 12
     vals = (
         seasonal * np.sin(2 * np.pi * (idx % 12) / 12)
         + trend * (yrs - start)
-        + RNG.normal(scale=noise, size=idx.size)
+        + np.random.default_rng(seed).normal(scale=noise, size=idx.size)
     )
     return idx, vals
 
