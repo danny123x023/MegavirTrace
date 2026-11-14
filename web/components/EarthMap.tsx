@@ -41,7 +41,7 @@ function reducedMotion(): boolean {
   return typeof window !== "undefined" && (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
 }
 
-export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height = 420, points }: Props) {
+export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height, points }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -266,7 +266,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
           </label>
         )}
       </div>
-      <div ref={box} className="map-box" style={{ height }} />
+      <div ref={box} className="map-box" style={height ? { height } : undefined} />
       {hasCells && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
           <div className="legend-ramp" aria-label={t("Colour scale")}>

@@ -111,3 +111,27 @@ test("phone layout: nothing wider than the screen", async ({ browser }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await page.close();
 });
+
+test("header: full-width layout and theme switches apply and persist", async ({ browser }) => {
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  await page.goto("/methods");
+  const html = page.locator("html");
+  const mainWidth = () => page.locator("main").evaluate((e) => e.getBoundingClientRect().width);
+  const layout = page.getByRole("button", { name: "Full width" });
+  await expect(layout).toHaveAttribute("aria-pressed", "true"); // full width is the default
+  expect(await mainWidth()).toBeGreaterThan(1800);
+  await layout.click();
+  await expect(html).toHaveAttribute("data-layout", "centered");
+  expect(await mainWidth()).toBeLessThanOrEqual(1296);
+  await page.getByRole("button", { name: "Dark" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.reload(); // both choices are remembered and applied before paint
+  await expect(html).toHaveAttribute("data-layout", "centered");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("button", { name: "Full width" })).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Full width" }).click();
+  await page.getByRole("button", { name: "Auto (follow the device)" }).click();
+  await expect(html).not.toHaveAttribute("data-layout", /.+/);
+  await expect(html).not.toHaveAttribute("data-theme", /.+/);
+  await page.close();
+});
