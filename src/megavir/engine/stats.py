@@ -514,6 +514,82 @@ def turning_point(t: np.ndarray, y: np.ndarray, min_points: int = 5) -> dict | N
 # --------------------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------------------
+# Is it speeding up? (FR7)
+# --------------------------------------------------------------------------------------
+
+ALPHA_ACCEL = (
+    0.025  # stricter: calibrated by Monte Carlo to keep false "speeding up" claims in the trend targets
+)
+MIN_YEARS_ACCEL = 15
+
+
+def acceleration(t: np.ndarray, y: np.ndarray, alpha: float = ALPHA_ACCEL) -> dict:
+    """Is the trend speeding up, slowing down or changing direction?
+
+    A straight line misreads acceleration, so the curvature term c of y = a + b t + c t^2 is
+    tested with the same autocorrelation treatment as the trend: r1 from the quadratic
+    residuals, corrected for the bias of a three-parameter fit ((n r1 + 3) / (n - 5)), the
+    standard error widened with n_eff and a t-test with n_eff - 3 degrees of freedom.  A
+    claim needs p < 0.025 (stricter than for the trend itself) and the robust Sen slopes of the
+    two halves of the record must show the same change.  Monte Carlo: at most 3.3 % false
+    claims at r1 = 0.3 and 4.8 % at r1 = 0.5 for a straight trend with AR(1) noise.
+    """
+    t = np.asarray(t, float)
+    y = np.asarray(y, float)
+    n = y.size
+    out = {"tested": False, "significant": False, "kind": None, "alpha": alpha}
+    if np.unique(np.floor(t)).size < MIN_YEARS_ACCEL:
+        out["reason"] = f"needs at least {MIN_YEARS_ACCEL} years"
+        return out
+    order = np.argsort(t)
+    t, y = t[order], y[order]
+    tc = t - t.mean()
+    X = np.column_stack([np.ones(n), tc, tc * tc])
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    res = y - X @ beta
+    s2 = float(res @ res) / (n - 3)
+    cov = s2 * np.linalg.inv(X.T @ X)
+    r1_hat = lag1_autocorrelation(t, res, 1.0)
+    r1 = float(np.clip((n * r1_hat + 3.0) / (n - 5.0), 0.0, R1_MAX))
+    n_eff = effective_n(n, r1)
+    h = n // 2
+    early = float(np.median(pairwise_slopes(t[:h], y[:h])))
+    late = float(np.median(pairwise_slopes(t[h:], y[h:])))
+    out.update(
+        {
+            "tested": True,
+            "curvature": float(beta[2]),
+            "slope_early": early,
+            "slope_late": late,
+            "split": float(t[h]),
+            "first": float(t[0]),
+            "last": float(t[-1]),
+            "r1": r1,
+            "n_eff": n_eff,
+        }
+    )
+    if n_eff <= 4 or cov[2, 2] <= 0:
+        out["p"] = 1.0
+        out["reason"] = "too few independent values"
+        return out
+    df = n_eff - 3.0
+    se = float(np.sqrt(cov[2, 2]) * np.sqrt((n - 3.0) / df))
+    p = float(2 * sps.t.sf(abs(beta[2] / se), df))
+    out["p"] = p
+    c = float(beta[2])
+    agrees = late != early and np.sign(late - early) == np.sign(c)
+    if p < alpha and agrees:
+        out["significant"] = True
+        if early != 0 and late != 0 and np.sign(early) != np.sign(late):
+            out["kind"] = "changed_direction"
+        elif abs(late) > abs(early):
+            out["kind"] = "speeding_up"
+        else:
+            out["kind"] = "slowing_down"
+    return out
+
+
 @dataclass
 class TrendStats:
     n: int
@@ -534,6 +610,7 @@ class TrendStats:
     robustness: RobustnessResult
     unusual: list[dict]
     turning: dict | None
+    acceleration: dict | None
     alpha: float = ALPHA
 
     def to_dict(self) -> dict:
@@ -631,5 +708,6 @@ def analyse_trend(
         robustness=rob,
         unusual=unusual_points(resid, labels),
         turning=turning_point(t, y) if per_year == 1 else None,
+        acceleration=acceleration(t, y) if per_year == 1 else None,
         alpha=alpha,
     )

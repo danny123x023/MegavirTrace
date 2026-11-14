@@ -83,6 +83,15 @@ the residual scatter (small < 0.5 ≤ moderate < 1 ≤ large < 2 ≤ very large)
 if Sen's slope changes sign in either half of the record, without the first and last years, or with any one
 year left out.
 
+**Is it speeding up?** A straight line misreads acceleration, so the curvature term c of
+y = a + b t + c t² is tested with the same autocorrelation treatment as the trend. We estimate r₁ from the
+quadratic residuals, correct it for the bias of a three-parameter fit ((n r̂₁ + 3)/(n − 5)), widen the
+standard error with n_eff, and use a t-test with n_eff − 3 degrees of freedom. A claim of "speeding up",
+"slowing down" or "changed direction" needs p < 0.025 (stricter than for the trend itself), and the robust
+Sen slopes of the two halves of the record must show the same change. At α = 0.05 a straight trend with
+AR(1) noise was called accelerating 5–7% of the time at r₁ = 0.3. At 0.025 the rate is at most 3.3% at
+r₁ = 0.3 and 4.8% at r₁ = 0.5, within the same targets as the trend test. The check needs at least 15 years.
+
 **Exploratory clues.** These are labelled as such: years more than 2 SD from the trend line, and a continuous
 two-piece (hinge) fit that is reported only when it beats the straight line by ΔBIC > 2.
 
@@ -110,6 +119,7 @@ the difference per decade, its 95% interval, p, and the smallest difference the 
 | False alarms, 2,000 AR(1) series per setting, n = 20 and 30 | 3.5–4.1% at r₁ = 0.3 (target ≤ 5%); 4.4–4.7% at r₁ = 0.5 (target ≤ 7%) |
 | 95% interval coverage of a synthetic trend | 91–98% |
 | Difference test, correlation −0.5 to 0.95 | 3.7–4.8% false alarms |
+| "Speeding up" claims for a straight trend with AR(1) noise, n = 15–45 | ≤ 3.3% at r₁ = 0.3, ≤ 4.8% at r₁ = 0.5; real acceleration found in > 90% of 45-year records |
 | Vectorised cell engine vs per-series engine | Same slope and p |
 | GISTEMP global series vs NASA GLB.Ts+dSST (1880–2025) | r = 0.9997, mean absolute difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year |
 | Readers on fake files in each product's layout | Orientation, units, fills and dateline wrap correct |

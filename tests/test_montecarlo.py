@@ -106,3 +106,28 @@ def test_seasonal_cell_engine_matches_series_engine():
         ols, mk, sen, _, _ = trend_test(t, X[:, c], 12, grp)
         assert res["slope"][c] == pytest.approx(sen.slope, rel=1e-9, abs=1e-12)
         assert res["p"][c] == pytest.approx(mk.p, rel=1e-6, abs=1e-9)
+
+
+@pytest.mark.parametrize("n", [20, 30])
+@pytest.mark.parametrize("phi,limit", [(0.3, 0.05), (0.5, 0.07)])
+def test_no_false_speeding_up_claims(n, phi, limit):
+    """A straight trend with AR(1) noise must not be called "speeding up" or "slowing down" too often."""
+    from megavir.engine.stats import acceleration
+
+    rng = np.random.default_rng(500 + n + int(phi * 10))
+    t = np.arange(n) + 0.5
+    X = ar1(rng, n, phi, RUNS) + 0.05 * t
+    rate = np.mean([acceleration(t, x)["significant"] for x in X])
+    assert rate <= limit, f"false acceleration claims {rate:.3f} > {limit}"
+
+
+def test_real_acceleration_is_found():
+    from megavir.engine.stats import acceleration
+
+    rng = np.random.default_rng(7)
+    n = 45
+    t = np.arange(n) + 0.5
+    X = ar1(rng, n, 0.3, 300) + 0.02 * t + 0.01 * t**2
+    res = [acceleration(t, x) for x in X]
+    assert np.mean([r["significant"] for r in res]) > 0.9
+    assert all(r["kind"] == "speeding_up" for r in res if r["significant"])

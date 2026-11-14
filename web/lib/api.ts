@@ -51,6 +51,7 @@ export type Stats = {
   robustness: { fragile: boolean; checks: { check: string; slope: number; keeps_sign: boolean }[] };
   unusual: { label: string; departure: number; sd_units: number }[];
   turning: null | { at: number; slope_before: number; slope_after: number; preferred: boolean };
+  acceleration: null | { tested: boolean; significant: boolean; kind: string | null; p?: number; slope_early?: number; slope_late?: number; split?: number; reason?: string };
   per_decade: { sen: number; sen_low: number; sen_high: number; ols: number; ols_low: number; ols_high: number };
 };
 

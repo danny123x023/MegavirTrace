@@ -46,6 +46,16 @@ export function VerdictCard({ verdict, dataKind, provenance }: { verdict: Verdic
   );
 }
 
+const PACE: Record<string, string> = { speeding_up: "Speeding up", slowing_down: "Slowing down", changed_direction: "Changed direction" };
+
+function paceTile(stats: Stats, units: string) {
+  const a = stats.acceleration;
+  if (!a || !a.tested) return { label: "Change of pace", value: "Not tested", sub: a?.reason ?? "yearly or seasonal values only" };
+  const halves = `${fmtSigned((a.slope_early ?? 0) * 10)} then ${fmtSigned((a.slope_late ?? 0) * 10)} ${units} per decade`;
+  if (a.significant && a.kind) return { label: "Change of pace", value: PACE[a.kind] ?? a.kind, sub: `${halves} · p ${fmtP(a.p)}` };
+  return { label: "Change of pace", value: "Steady", sub: `no clear change in pace (p ${fmtP(a.p)}) · ${halves}` };
+}
+
 export function StatTiles({ stats, units }: { stats: Stats; units: string }) {
   const pd = stats.per_decade;
   const ny = typeof stats.years_needed === "number" ? stats.years_needed : Infinity;
@@ -58,6 +68,7 @@ export function StatTiles({ stats, units }: { stats: Stats; units: string }) {
     { label: "Size against the noise", value: stats.effect_label, sub: `trend over the record ÷ scatter = ${fmt(stats.effect_ratio, 2)}` },
     { label: "Years needed to detect", value: Number.isFinite(ny) ? `${Math.ceil(ny)} years` : "—", sub: Number(stats.years_more) > 0 ? `${stats.years_more} more than this record` : "this record is long enough for a trend this size" },
     { label: "Robustness", value: stats.robustness.fragile ? "Fragile" : "Holds", sub: stats.robustness.fragile ? "changes direction in a half or without one year" : "both halves, no end years, any one year left out" },
+    paceTile(stats, units),
   ];
   return (
     <section aria-label="Statistics">

@@ -148,7 +148,7 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 | FR10 | Compare two regions | Must | Done, plus the opposite-trend finder |
 | FR20 | Security and cost | Must | Done |
 | FR2 | Six more variables | Should | Listed as planned (DOIs verified); not ingested |
-| FR7 | Speeding-up trends | Should | Partial: two-piece (hinge) fit chosen by BIC, shown as an exploratory clue |
+| FR7 | Speeding-up trends | Should | Done: curvature test with memory correction, calibrated so false "speeding up" claims stay within the targets |
 | FR8 | Cell trend map with FDR | Should | Done |
 | FR9 | 2D/3D Earth view | Should | Done (animated switch; instant with reduced motion) |
 | FR12 | Variable guidance and scan | Should | Done |

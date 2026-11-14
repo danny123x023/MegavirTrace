@@ -45,6 +45,12 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "is a real trend it is probably smaller than this estimate.",
         "fragile": "Handle with care: the trend is fragile. It changes direction {where}.",
         "robust": "The direction holds in both halves of the record and when any single year is left out.",
+        "pace_speeding_up": "It is speeding up: about {late} {unit} per decade from {split} on, against {early} "
+        "before (test of the change in pace p {p}).",
+        "pace_slowing_down": "It is slowing down: about {late} {unit} per decade from {split} on, against {early} "
+        "before (test of the change in pace p {p}).",
+        "pace_changed_direction": "The direction changed: {early} {unit} per decade before {split}, {late} since "
+        "(test of the change in pace p {p}).",
         "turning": "Exploratory clue: the change looks different before and after about {at} "
         "({before} then {after} {unit} per decade).",
         # caveats
@@ -93,6 +99,12 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "si hay una tendencia real, probablemente es menor que esta estimación.",
         "fragile": "Con cautela: la tendencia es frágil. Cambia de dirección {where}.",
         "robust": "La dirección se mantiene en ambas mitades del registro y al quitar cualquier año.",
+        "pace_speeding_up": "Se está acelerando: unos {late} {unit} por década desde {split}, frente a {early} "
+        "antes (prueba del cambio de ritmo p {p}).",
+        "pace_slowing_down": "Se está frenando: unos {late} {unit} por década desde {split}, frente a {early} "
+        "antes (prueba del cambio de ritmo p {p}).",
+        "pace_changed_direction": "La dirección cambió: {early} {unit} por década antes de {split}, {late} "
+        "desde entonces (prueba del cambio de ritmo p {p}).",
         "turning": "Pista exploratoria: el cambio parece distinto antes y después de {at} "
         "({before} y luego {after} {unit} por década).",
         "cav_cause": "Una tendencia no es una causa: muestra qué cambió, no por qué.",
@@ -257,7 +269,22 @@ def trend_verdict(
             sentences.append(t["fragile"].format(where=where))
         else:
             sentences.append(t["robust"])
-    if st.turning and st.turning.get("preferred"):
+    acc = st.acceleration or {}
+    if acc.get("significant"):
+        shown["pace_early"] = fmt_signed(acc["slope_early"] * per_dec, lang=lang)
+        shown["pace_late"] = fmt_signed(acc["slope_late"] * per_dec, lang=lang)
+        shown["pace_split"] = str(int(acc["split"]))
+        shown["pace_p"] = fmt_p(acc["p"], lang)
+        sentences.append(
+            t["pace_" + acc["kind"]].format(
+                early=shown["pace_early"],
+                late=shown["pace_late"],
+                split=shown["pace_split"],
+                p=shown["pace_p"],
+                unit=unit,
+            )
+        )
+    elif st.turning and st.turning.get("preferred"):
         shown["turning_at"] = str(int(st.turning["at"]))
         sentences.append(
             t["turning"].format(

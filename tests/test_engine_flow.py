@@ -123,8 +123,28 @@ def test_compare_shared_noise_cancels():
     a = build_series(idx, base + 0.04 * (idx / 12 - 2001), "annual")
     b = build_series(idx, base, "annual")
     c = compare_series(a, b)
-    assert c["correlation"] > 0.7
+    diff = np.array(c["diff"])
+    resid = diff - np.polyval(np.polyfit(c["t"], diff, 1), c["t"])
+    assert resid.std() < 0.05 * np.std(c["b"])  # the shared ups and downs cancel in A - B
     assert c["difference"]["significant"]  # identical noise cancels, the 0.04/yr gap stands out
     assert c["difference"]["slope_per_decade"] == pytest.approx(0.4, rel=0.05)
     v = compare_verdict(c, VARIABLES["air_temp"], "A", "B", "°C")
     assert v["status"] == "significant" and "A minus B" in v["sentences"][0]
+
+
+def test_speeding_up_verdict():
+    rng = np.random.default_rng(3)
+    t = np.arange(40) + 1985.5
+    y = 0.002 * (t - 1985) ** 2 + rng.normal(0, 0.1, 40)
+    st = analyse_trend(t, y, np.floor(t).astype(int), [str(int(x)) for x in t])
+    assert st.acceleration["significant"] and st.acceleration["kind"] == "speeding_up"
+    v = trend_verdict(st, VARIABLES["air_temp"], "Testland", "°C")
+    text = " ".join(v["sentences"])
+    assert "speeding up" in text and "Exploratory clue" not in text
+    assert v["shown"]["pace_late"] in text
+
+
+def test_short_records_are_not_tested_for_pace():
+    t = np.arange(12) + 2010.5
+    st = analyse_trend(t, 0.1 * t + np.sin(t), np.floor(t).astype(int), [str(int(x)) for x in t])
+    assert st.acceleration["tested"] is False

@@ -33,7 +33,7 @@ from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
 from megavir.places.geometry import apply_domain, cells_for
 from megavir.store import GridSpec, Version, active_versions, read_cells, read_mask
 
-ENGINE_VERSION = "2026.11-4"
+ENGINE_VERSION = "2026.11-5"
 MAX_MAP_CELLS = 40_000
 
 
