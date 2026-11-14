@@ -14,74 +14,48 @@ const LINKS = [
   { href: "/methods", label: "Method" },
 ];
 
-type Theme = "system" | "light" | "dark";
+const ICON = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
 
-const ICON = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
-
-function ThemeIcon({ mode }: { mode: Theme }) {
-  if (mode === "light")
-    return (
-      <svg {...ICON}>
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-      </svg>
-    );
-  if (mode === "dark")
-    return (
-      <svg {...ICON}>
-        <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
-      </svg>
-    );
-  return (
-    <svg {...ICON}>
-      <rect x="3" y="4" width="18" height="12" rx="2" />
-      <path d="M8 20h8M12 16v4" />
-    </svg>
-  );
-}
-
-function LayoutIcon({ wide }: { wide: boolean }) {
-  // arrows pointing in when the page is full width (click to centre), out when it is centred
-  return wide ? (
-    <svg {...ICON}>
-      <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />
-    </svg>
-  ) : (
-    <svg {...ICON}>
-      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-    </svg>
-  );
-}
-
-const THEMES: { id: Theme; label: string }[] = [
-  { id: "system", label: "Auto (follow the device)" },
-  { id: "light", label: "Light" },
-  { id: "dark", label: "Dark" },
-];
+const TranslateIcon = () => (
+  <svg {...ICON}>
+    <path d="M4 5h8M8 3v2M10.5 5c-.6 3.6-3 6.6-6.5 8.5M6.5 9c1.4 2 3.3 3.5 5.5 4.5" />
+    <path d="M13 21l4-9 4 9M14.4 18h5.2" />
+  </svg>
+);
+const MoonIcon = () => (
+  <svg {...ICON}>
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+  </svg>
+);
+const ExpandIcon = () => (
+  <svg {...ICON}>
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+  </svg>
+);
 
 export default function Nav() {
   const path = usePathname();
   const { lang, setLang, t } = useI18n();
-  const [theme, setTheme] = useState<Theme>("system");
+  const [dark, setDark] = useState(false);
   const [wide, setWide] = useState(true);
 
   useEffect(() => {
     const d = document.documentElement;
-    if (d.dataset.theme === "light" || d.dataset.theme === "dark") setTheme(d.dataset.theme);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    // with no saved choice the device decides, so the button follows the device until it is used
+    const sync = () => setDark(d.dataset.theme === "dark" || (d.dataset.theme !== "light" && mq.matches));
+    sync();
     setWide(d.dataset.layout !== "centered");
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
 
-  function applyTheme(next: Theme) {
-    setTheme(next);
-    const d = document.documentElement;
+  function toggleDark() {
+    const next = dark ? "light" : "dark";
+    setDark(!dark);
+    document.documentElement.dataset.theme = next;
     try {
-      if (next === "system") {
-        delete d.dataset.theme;
-        localStorage.removeItem("mt-theme");
-      } else {
-        d.dataset.theme = next;
-        localStorage.setItem("mt-theme", next);
-      }
+      localStorage.setItem("mt-theme", next);
     } catch {
       /* private mode: the choice lasts for this page only */
     }
@@ -125,27 +99,20 @@ export default function Nav() {
           </Link>
         ))}
       </nav>
-      <span className="header-spacer" />
       <div className="header-tools">
-        <select className="compact" aria-label={t("Language")} value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
-          {LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-        </select>
-        <div className="segmented icons" role="group" aria-label={t("Colour theme")}>
-          {THEMES.map((m) => (
-            <button key={m.id} type="button" aria-pressed={theme === m.id} aria-label={t(m.label)} title={t(m.label)} onClick={() => applyTheme(m.id)}>
-              <ThemeIcon mode={m.id} />
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="icon-btn layout-toggle"
-          aria-pressed={wide}
-          aria-label={t("Full width")}
-          title={t(wide ? "Switch to a centred layout" : "Switch to full width")}
-          onClick={toggleLayout}
-        >
-          <LayoutIcon wide={wide} />
+        <span className="select-icon">
+          <TranslateIcon />
+          <select aria-label={t("Language")} value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
+            {LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+          </select>
+        </span>
+        <button type="button" className="tool-btn" aria-pressed={dark} onClick={toggleDark}>
+          <MoonIcon />
+          <span className="tool-label">{t("Dark mode")}</span>
+        </button>
+        <button type="button" className="tool-btn layout-toggle" aria-pressed={wide} onClick={toggleLayout}>
+          <ExpandIcon />
+          <span className="tool-label">{t("Full screen")}</span>
         </button>
       </div>
     </header>
