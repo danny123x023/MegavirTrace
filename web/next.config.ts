@@ -21,7 +21,11 @@ const nextConfig: NextConfig = {
   agentRules: false,
   allowedDevOrigins: ["127.0.0.1"],
   async rewrites() {
-    return [{ source: "/api/:path*", destination: `${BACKEND}/:path*` }];
+    const api = [{ source: "/api/:path*", destination: `${BACKEND}/:path*` }];
+    if (process.env.NODE_ENV !== "development") return api;
+    // In development /sw.js is a worker that removes itself and any worker a production build left
+    // on this address (public/sw-reset.js); "beforeFiles" lets it take precedence over public/sw.js.
+    return { beforeFiles: [{ source: "/sw.js", destination: "/sw-reset.js" }], afterFiles: api, fallback: [] };
   },
   async headers() {
     return [
