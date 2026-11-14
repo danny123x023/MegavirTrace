@@ -27,8 +27,8 @@ from megavir.catalog import DATASETS, VARIABLES
 from megavir.store import GridSpec, read_mask, write_version
 
 from . import download as dl
-from .products import PRODUCTS, Product, gunzip, month_abs_from_iso, standard_fields
-from .regrid import NativeGrid, Regridder
+from .products import PRODUCTS, Product, gunzip, month_abs_from_iso, multi_time_fields, standard_fields
+from .regrid import NativeGrid, Regridder, bin_to_grid
 from .validate import validate_cube
 
 log = logging.getLogger("megavir.ingest")
@@ -131,11 +131,7 @@ def _opendap_files(
     p: Product, mode: str, raw: Path, report: RunReport, limit: int | None
 ) -> list[tuple[int, Path, dict]]:
     start, end = time_range(p, mode)
-    granules = dl.cmr_granules(p.concept_id, start, end)
-    if limit:
-        granules = granules[-limit:]
-    if not granules:
-        raise RuntimeError(f"no granules for {p.id} in {start}..{end}")
+    granules = _granules(p, start, end, limit)
     session = dl.earthdata_session()
     folder = raw / p.id / mode
     folder.mkdir(parents=True, exist_ok=True)
@@ -164,6 +160,14 @@ def _opendap_files(
     else:
         i0, i1, j0, j1 = 0, ny - 1, 0, nx - 1
     ranges = {ny: (i0, i1), nx: (j0, j1)}
+    t_offset = 0
+    if p.multi_time:
+        # the time dimension is the one that is neither latitude nor longitude
+        dims = list(meta["vars"].values())[0]["dims"]
+        tsize = next((d[1] for d in dims if d[1] not in (ny, nx) and d[1] > 1), 0)
+        if tsize and mode == "test":
+            t_offset = max(0, tsize - 120)  # the most recent 10 years
+            ranges[tsize] = (t_offset, tsize - 1)
     out = []
     for g in granules:
         if not g.opendap_url:
@@ -185,9 +189,51 @@ def _opendap_files(
             (
                 g.begin,
                 dest,
-                {"lats": lats[i0 : i1 + 1], "lons": lons[j0 : j1 + 1], "lon_first": lon_axis_first},
+                {
+                    "lats": lats[i0 : i1 + 1],
+                    "lons": lons[j0 : j1 + 1],
+                    "lon_first": lon_axis_first,
+                    "t_offset": t_offset,
+                },
             )
         )
+    return out
+
+
+def _granules(p: Product, start: str, end: str, limit: int | None) -> list:
+    granules = dl.cmr_granules(p.concept_id, start, end)
+    if p.granule_filter:
+        granules = [g for g in granules if p.granule_filter(g)]
+    if limit:
+        granules = granules[-limit:]
+    if not granules:
+        raise RuntimeError(f"no granules for {p.id} in {start}..{end}")
+    return granules
+
+
+def _download_files(
+    p: Product, mode: str, raw: Path, report: RunReport, limit: int | None
+) -> list[tuple[str, Path]]:
+    """Whole files over HTTPS with Earthdata Login (products without OPeNDAP).
+
+    The files are shared by the test and full runs; the test run crops to the test box after
+    reading, so a later full run reuses every file already on disk.
+    """
+    start, end = time_range(p, mode)
+    granules = _granules(p, start, end, limit)
+    session = dl.earthdata_session()
+    folder = raw / p.id
+    out = []
+    for g in granules:
+        if not g.data_url:
+            report.skipped_files.append(g.ur)
+            continue
+        dest = folder / re.sub(r"[^0-9A-Za-z._-]", "_", g.data_url.rstrip("/").split("/")[-1])
+        info = dl.download(g.data_url, dest, session)
+        report.files += 1
+        report.bytes += info["bytes"]
+        report.download_s += info["seconds"]
+        out.append((g.begin, dest))
     return out
 
 
@@ -321,10 +367,29 @@ def run(
         files = _opendap_files(p, mode, raw, report, limit)
         t0 = time.time()
         for begin, path, info in files:
+            if p.multi_time:
+                m0 = month_abs_from_iso(begin) + info["t_offset"]
+                for k, fields, la, lo in multi_time_fields(
+                    path, p, info["lats"], info["lons"], info["lon_first"]
+                ):
+                    for v in var_ids:
+                        acc.add(v, m0 + k, regrid(p.outputs[v](fields, m0 + k), la, lo))
+                continue
             month = month_abs_from_iso(begin)
             fields, la, lo = standard_fields(path, p, info["lats"], info["lons"], info["lon_first"])
             for v in var_ids:
                 acc.add(v, month, regrid(p.outputs[v](fields, month), la, lo))
+    elif p.access == "download":
+        files = _download_files(p, mode, raw, report, limit)
+        t0 = time.time()
+        for begin, path in files:
+            for month, fields, la, lo in p.reader(path, begin):
+                for v in var_ids:
+                    f = p.outputs[v](fields, month)
+                    if p.projected:
+                        acc.add(v, month, bin_to_grid(la, lo, f, spec))
+                    else:
+                        acc.add(v, month, regrid(f, la, lo))
     else:
         paths = _public_files(p, mode, raw, report, limit)
         t0 = time.time()

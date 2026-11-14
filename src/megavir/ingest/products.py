@@ -57,6 +57,10 @@ class Product:
     notes: str = ""
     record_start: str = "2000-01"
     domain_mask: dict = field(default_factory=dict)  # var -> "land" | "ocean" (mask applied at ingest)
+    multi_time: bool = False  # one granule holds many months (CERES EBAF)
+    granule_filter: callable | None = None  # keep only some granules (monthly sea ice files)
+    reader: callable | None = None  # access="download": (path, begin_iso) -> [(month, fields, lats, lons)]
+    projected: bool = False  # lats/lons from the reader are 2-D (polar stereographic): bin, do not regrid
 
 
 # --------------------------------------------------------------------------------------
@@ -325,6 +329,186 @@ _reg(
 )
 
 
+# ---- FR2: six more variables -----------------------------------------------------------
+
+
+def _lst(f, m):
+    day, night = f["LST_Day_CMG"], f["LST_Night_CMG"]
+    return k_to_c((day + night) / 2.0)  # both passes needed, so day and night weigh the same
+
+
+_reg(
+    Product(
+        id="modis_lst",
+        concept_id="C2565788897-LPCLOUD",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["LST_Day_CMG", "LST_Night_CMG"],  # names checked against NASA CMR (UMM-Var)
+        outputs={"land_surface_temp": _lst},
+        native_lats=regular(89.975, -0.05, 3600),
+        native_lons=regular(-179.975, 0.05, 7200),
+        fill=(0.0,),
+        valid_range=(150, 400),
+        record_start="2000-02",
+        notes="HDF4 CMG grid, north -> south; stored integers x 0.02 = kelvin (applied from scale_factor).",
+    )
+)
+
+_reg(
+    Product(
+        id="merra2_aer",
+        concept_id="C1276812866-GES_DISC",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["TOTEXTTAU"],  # total aerosol extinction optical thickness at 550 nm (checked in CMR)
+        outputs={"aerosols": lambda f, m: f["TOTEXTTAU"]},
+        native_lats=regular(-90.0, 0.5, 361),
+        native_lons=regular(-180.0, 0.625, 576),
+        fill=(1e15,),
+        valid_range=(0, 10),
+        record_start="1980-01",
+    )
+)
+
+_reg(
+    Product(
+        id="oco2",
+        concept_id="C2240248790-GES_DISC",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["XCO2"],
+        outputs={"co2": lambda f, m: f["XCO2"] * 1e6},  # mol/mol -> ppm
+        native_lats=regular(-90.0, 0.5, 361),
+        native_lons=regular(-180.0, 0.625, 576),
+        fill=(1e15,),
+        valid_range=(3e-4, 6e-4),
+        record_start="2015-01",
+        notes="GEOS assimilation of OCO-2 XCO2 on the MERRA-2 grid.",
+    )
+)
+
+_reg(
+    Product(
+        id="ceres_ebaf",
+        concept_id="C3880496704-LARC_CLOUD",
+        access="opendap",
+        cadence="monthly",
+        target_res=1.0,
+        fields=["toa_net_all_mon"],
+        outputs={"energy_budget": lambda f, m: f["toa_net_all_mon"]},
+        native_lats=regular(-89.5, 1.0, 180),
+        native_lons=regular(0.5, 1.0, 360),
+        fill=(-999.0,),
+        valid_range=(-500, 500),
+        record_start="2000-03",
+        multi_time=True,
+        notes="One granule holds the whole record (time, lat, lon); 0..360 longitudes.",
+    )
+)
+
+
+def _seaice_monthly_only(g) -> bool:
+    return bool(re.search(r"_(?:N|S)25km_\d{6}_v", g.name))
+
+
+def _read_seaice(path: Path, begin: str):
+    """NSIDC-0051 v2 monthly netCDF: x, y (metres, polar stereographic) and a <sensor>_ICECON field."""
+    north = "_N25km_" in path.name
+    with h5py.File(path, "r") as h5:
+        ice = None
+
+        def visit(name, obj):
+            nonlocal ice
+            if (
+                ice is None
+                and isinstance(obj, h5py.Dataset)
+                and name.split("/")[-1].upper().endswith("_ICECON")
+            ):
+                ice = obj
+
+        h5.visititems(visit)
+        if ice is None:
+            raise KeyError(f"no *_ICECON field in {path.name}")
+        raw = np.asarray(ice[()], float)
+        scale = _attr(ice, "scale_factor")
+        x = np.asarray(_find_dataset(h5, "x")[()], float)
+        y = np.asarray(_find_dataset(h5, "y")[()], float)
+    raw = squeeze_to_2d(raw)
+    if scale is not None and raw.max() > 1.5:
+        conc = np.where(raw <= 250, raw * float(scale), np.nan)  # 251-255 are flags (pole hole, coast, land)
+    elif raw.max() > 1.5:
+        conc = np.where(raw <= 250, raw / 250.0, np.nan)
+    else:
+        conc = np.where((raw >= 0) & (raw <= 1.0), raw, np.nan)
+    X, Y = np.meshgrid(x, y)
+    from .regrid import polar_stereographic_to_latlon
+
+    lat, lon = polar_stereographic_to_latlon(X, Y, north=north)
+    m = _month_from_seaice_name(path.name)
+    return [(m, {"ICECON": conc * 100.0}, lat, lon)]  # percent
+
+
+def _month_from_seaice_name(name: str) -> int:
+    mm = re.search(r"_(\d{4})(\d{2})_v", name)
+    if not mm:
+        raise ValueError(f"no YYYYMM in {name}")
+    return int(mm.group(1)) * 12 + int(mm.group(2)) - 1
+
+
+_reg(
+    Product(
+        id="nsidc_seaice",
+        concept_id="C3177837840-NSIDC_CPRD",
+        access="download",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["ICECON"],
+        outputs={"sea_ice": lambda f, m: f["ICECON"]},
+        record_start="1978-11",
+        granule_filter=_seaice_monthly_only,
+        reader=_read_seaice,
+        projected=True,
+        domain_mask={"sea_ice": "ocean"},
+        notes="25 km polar stereographic (both hemispheres); monthly files only; binned to 0.5°.",
+    )
+)
+
+
+def _read_snow(path: Path, begin: str):
+    """MOD10CM v61 HDF4: Snow_Cover_Monthly_CMG, 0-100 %, values above 100 are flags."""
+    from pyhdf.SD import SD, SDC
+
+    sd = SD(str(path), SDC.READ)
+    try:
+        raw = np.asarray(sd.select("Snow_Cover_Monthly_CMG")[:], float)
+    finally:
+        sd.end()
+    raw[raw > 100] = np.nan  # 107 lake ice, 111 night, 250 cloud, 253 not mapped, 254 water, 255 fill
+    lats, lons = regular(89.975, -0.05, raw.shape[0]), regular(-179.975, 0.05, raw.shape[1])
+    f, la, lo = to_standard(raw, lats, lons)
+    return [(month_abs_from_iso(begin), {"Snow_Cover_Monthly_CMG": f}, la, lo)]
+
+
+_reg(
+    Product(
+        id="modis_snow",
+        concept_id="C3050353608-NSIDC_CPRD",
+        access="download",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["Snow_Cover_Monthly_CMG"],
+        outputs={"snow_cover": lambda f, m: f["Snow_Cover_Monthly_CMG"]},
+        record_start="2000-03",
+        reader=_read_snow,
+        domain_mask={"snow_cover": "land"},
+        notes="HDF4 CMG grid (no OPeNDAP): whole files are downloaded and read with pyhdf.",
+    )
+)
+
+
 # --------------------------------------------------------------------------------------
 # Reading files
 # --------------------------------------------------------------------------------------
@@ -418,6 +602,20 @@ def standard_fields(path: Path, product: Product, lats: np.ndarray, lons: np.nda
         f, std_lats, std_lons = to_standard(a, lats, lons, lon_first=lon_first)
         out[name] = f.astype(float)
     return out, std_lats, std_lons
+
+
+def multi_time_fields(path: Path, product: Product, lats: np.ndarray, lons: np.ndarray, lon_first: bool):
+    """[(time index, fields, lats, lons)] for a granule holding many months (time first)."""
+    arrays = {name: np.asarray(read_h5_field(path, name, product)) for name in product.fields}
+    nt = next(iter(arrays.values())).shape[0]
+    out = []
+    for k in range(nt):
+        fields, la, lo = {}, lats, lons
+        for name, a in arrays.items():
+            f, la, lo = to_standard(a[k], lats, lons, lon_first=lon_first)
+            fields[name] = f.astype(float)
+        out.append((k, fields, la, lo))
+    return out
 
 
 def gunzip(src: Path) -> Path:

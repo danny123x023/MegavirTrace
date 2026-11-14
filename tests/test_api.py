@@ -13,11 +13,11 @@ pytestmark = pytest.mark.db
 def test_health_and_catalog(client):
     assert client.get("/health").json()["ok"]
     cat = client.get("/variables").json()
-    assert len(cat["variables"]) == 16 and len(cat["themes"]) == 7
+    assert len(cat["variables"]) == 22 and len(cat["themes"]) == 7
     assert all(v["data"] and v["data"]["kind"] == "synthetic" for v in cat["variables"])
-    assert len(cat["planned"]) == 6
+    assert cat["planned"] == []
     ds = client.get("/datasets").json()
-    assert len(ds["available"]) == 11
+    assert len(ds["available"]) == 17
 
 
 def test_place_search_and_outline(client):
@@ -91,7 +91,7 @@ def test_compare_and_opposites(client):
 def test_scan_controls_false_discoveries(client):
     s = client.post("/analysis/scan", json={"region": {"place": "country:TST"}}, headers=ORIGIN).json()
     rows = [r for r in s["results"] if "q" in r]
-    assert len(rows) == 16
+    assert len(rows) == 22
     assert all(r["q"] >= 0 for r in rows)
 
 

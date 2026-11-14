@@ -150,3 +150,69 @@ def days_in_month(month_abs: int) -> int:
     import datetime as _dt
 
     return (_dt.date(y, m + 1, 1) - _dt.date(y, m, 1)).days
+
+
+# --------------------------------------------------------------------------------------
+# Projected grids (NSIDC polar stereographic) -> regular grid by binning
+# --------------------------------------------------------------------------------------
+
+HUGHES_A = 6378273.0  # Hughes 1980 ellipsoid, used by the NSIDC polar stereographic grids
+HUGHES_E = 0.081816153
+
+
+def polar_stereographic_to_latlon(
+    x: np.ndarray, y: np.ndarray, north: bool = True, true_lat: float = 70.0, lon0: float | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Inverse ellipsoidal polar stereographic projection (Snyder 1987, eqs. 21-36 to 21-40).
+
+    NSIDC grids: true scale at 70°, central meridian -45° (north) or 0° (south), Hughes ellipsoid.
+    """
+    a, e = HUGHES_A, HUGHES_E
+    if lon0 is None:
+        lon0 = -45.0 if north else 0.0
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    if not north:  # the south pole case mirrors the north one
+        x, y = -x, -y
+    phc = np.deg2rad(true_lat)
+    tc = np.tan(np.pi / 4 - phc / 2) / ((1 - e * np.sin(phc)) / (1 + e * np.sin(phc))) ** (e / 2)
+    mc = np.cos(phc) / np.sqrt(1 - e**2 * np.sin(phc) ** 2)
+    rho = np.hypot(x, y)
+    t = rho * tc / (a * mc)
+    chi = np.pi / 2 - 2 * np.arctan(t)
+    e2, e4, e6, e8 = e**2, e**4, e**6, e**8
+    lat = (
+        chi
+        + (e2 / 2 + 5 * e4 / 24 + e6 / 12 + 13 * e8 / 360) * np.sin(2 * chi)
+        + (7 * e4 / 48 + 29 * e6 / 240 + 811 * e8 / 11520) * np.sin(4 * chi)
+        + (7 * e6 / 120 + 81 * e8 / 1120) * np.sin(6 * chi)
+        + (4279 * e8 / 161280) * np.sin(8 * chi)
+    )
+    lon = np.deg2rad(lon0) + np.arctan2(x, -y)
+    lat_deg = np.rad2deg(lat)
+    lon_deg = (np.rad2deg(lon) + 180.0) % 360.0 - 180.0
+    if not north:
+        lat_deg = -lat_deg
+        lon_deg = (2 * lon0 - lon_deg + 180.0) % 360.0 - 180.0
+    return lat_deg, lon_deg
+
+
+def bin_to_grid(
+    lat: np.ndarray, lon: np.ndarray, field: np.ndarray, spec: GridSpec, min_count: int = 1
+) -> np.ndarray:
+    """Average every source pixel into the regular cell that contains its centre.
+
+    Used for projected grids (25 km polar stereographic sea ice), whose pixels are much smaller
+    than the 0.5° target cells near the poles; not conservative, documented as pixel binning.
+    """
+    lat, lon, v = (np.asarray(a, float).ravel() for a in (lat, lon, field))
+    ok = np.isfinite(lat) & np.isfinite(lon) & np.isfinite(v)
+    i = np.floor((lat[ok] - (spec.lat0 - spec.res / 2)) / spec.res).astype(int)
+    j = np.floor((lon[ok] - (spec.lon0 - spec.res / 2)) / spec.res).astype(int)
+    inside = (i >= 0) & (i < spec.ny) & (j >= 0) & (j < spec.nx)
+    flat = i[inside] * spec.nx + j[inside]
+    s = np.bincount(flat, weights=v[ok][inside], minlength=spec.ny * spec.nx)
+    c = np.bincount(flat, minlength=spec.ny * spec.nx)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = np.where(c >= min_count, s / c, np.nan)
+    return out.reshape(spec.ny, spec.nx).astype(np.float32)

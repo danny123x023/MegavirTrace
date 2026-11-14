@@ -159,3 +159,104 @@ def test_missing_data_needs_half_the_cell():
     out = Regridder(NativeGrid.from_centres(lats, lons), GridSpec.global_grid(1.0))(field)
     assert np.isfinite(out[120]).all()  # north: 50 % valid -> kept
     assert np.isnan(out[30]).all()  # south: 25 % valid -> dropped
+
+
+# ---- FR2 products ---------------------------------------------------------------------------
+
+
+def test_modis_lst_scaled_integers_day_night_mean(tmp_path):
+    p = PRODUCTS["modis_lst"]
+    lats, lons = p.native_lats[:20], p.native_lons[:30]
+    day = np.full((20, 30), int(300 / 0.02), np.uint16)
+    night = np.full((20, 30), int(290 / 0.02), np.uint16)
+    night[4, 5] = 0  # fill
+    with h5py.File(tmp_path / "MOD11C3.nc4", "w") as fh:
+        for name, arr in (("LST_Day_CMG", day), ("LST_Night_CMG", night)):
+            ds = fh.create_dataset(name, data=arr)
+            ds.attrs["scale_factor"] = 0.02
+            ds.attrs["_FillValue"] = np.uint16(0)
+    fields, la, lo = standard_fields(tmp_path / "MOD11C3.nc4", p, lats, lons, False)
+    t = p.outputs["land_surface_temp"](fields, 0)
+    assert la[0] < la[-1]
+    assert t[0, 0] == pytest.approx(295 - 273.15, abs=1e-3)
+    assert np.isnan(t[20 - 1 - 4, 5])  # the fill, after the north-south flip
+
+
+def test_oco2_xco2_to_ppm_and_merra_aerosols(tmp_path):
+    for pid, field, value, var, expect in (
+        ("oco2", "XCO2", 4.15e-4, "co2", 415.0),
+        ("merra2_aer", "TOTEXTTAU", 0.18, "aerosols", 0.18),
+    ):
+        p = PRODUCTS[pid]
+        arr = np.full((1, 361, 576), value, np.float32)
+        arr[0, 0, 0] = 1e15
+        write_h5(tmp_path / f"{pid}.nc4", field, arr)
+        fields, la, lo = standard_fields(tmp_path / f"{pid}.nc4", p, p.native_lats, p.native_lons, False)
+        out = p.outputs[var](fields, 0)
+        assert np.isnan(out[0, 0]) and out[100, 100] == pytest.approx(expect, rel=1e-4)
+
+
+def test_ceres_one_granule_many_months_and_0_360_longitudes(tmp_path):
+    from megavir.ingest.products import multi_time_fields
+
+    p = PRODUCTS["ceres_ebaf"]
+    assert p.multi_time
+    LA, LO = np.meshgrid(p.native_lats, p.native_lons, indexing="ij")
+    data = np.stack([np.where(LO > 180, LO - 360, LO) + k for k in range(3)]).astype(
+        np.float32
+    )  # signed lon + month
+    write_h5(tmp_path / "CERES_EBAF.nc4", "toa_net_all_mon", data)
+    out = multi_time_fields(tmp_path / "CERES_EBAF.nc4", p, p.native_lats, p.native_lons, False)
+    assert [k for k, *_ in out] == [0, 1, 2]
+    k, fields, la, lo = out[2]
+    assert lo[0] == pytest.approx(-179.5) and lo[-1] == pytest.approx(179.5)
+    j = int(np.argmin(np.abs(lo - (-100.5))))
+    assert fields["toa_net_all_mon"][50, j] == pytest.approx(-100.5 + 2)
+
+
+def test_sea_ice_projection_flags_and_binning(tmp_path):
+    from megavir.ingest.regrid import bin_to_grid, polar_stereographic_to_latlon
+
+    # NSIDC's published corners of the 25 km grids
+    lat, lon = polar_stereographic_to_latlon(-3850000, 5850000, north=True)
+    assert lat == pytest.approx(30.98, abs=0.01) and lon == pytest.approx(168.35, abs=0.01)
+    lat, lon = polar_stereographic_to_latlon(-3950000, 4350000, north=False)
+    assert lat == pytest.approx(-39.23, abs=0.01) and lon == pytest.approx(-42.24, abs=0.01)
+
+    p = PRODUCTS["nsidc_seaice"]
+    x = np.arange(-3837500, 3750000, 25000.0)
+    y = np.arange(5837500, -5350000, -25000.0)
+    raw = np.full((1, y.size, x.size), 200, np.uint8)  # 200 * 0.004 = 0.8 -> 80 %
+    raw[0, :5, :] = 254  # land flag
+    f = tmp_path / "NSIDC0051_SEAICE_PS_N25km_202401_v2.0.nc"
+    with h5py.File(f, "w") as fh:
+        ds = fh.create_dataset("F17_ICECON", data=raw)
+        ds.attrs["scale_factor"] = 0.004
+        fh.create_dataset("x", data=x)
+        fh.create_dataset("y", data=y)
+    ((month, fields, la, lo),) = p.reader(f, "2024-01-01T00:00:00Z")
+    assert month == 2024 * 12 and la.shape == (y.size, x.size)
+    conc = p.outputs["sea_ice"](fields, month)
+    assert np.nanmax(conc) == pytest.approx(80.0) and np.isnan(conc[0, 0])
+    grid = bin_to_grid(la, lo, conc, GridSpec.global_grid(0.5))
+    assert np.nanmean(grid) == pytest.approx(80.0) and np.isnan(grid[0]).all()  # nothing near the South Pole
+    assert p.granule_filter(type("G", (), {"name": "NSIDC0051_SEAICE_PS_N25km_202401_v2.0.nc"})())
+    assert not p.granule_filter(type("G", (), {"name": "NSIDC0051_SEAICE_PS_N25km_20240131_v2.0.nc"})())
+
+
+def test_modis_snow_hdf4_flags(tmp_path):
+    from pyhdf.SD import SD, SDC
+
+    p = PRODUCTS["modis_snow"]
+    f = tmp_path / "MOD10CM.A2024001.061.hdf"
+    sd = SD(str(f), SDC.WRITE | SDC.CREATE)
+    arr = np.full((36, 72), 40, np.uint8)
+    arr[0, :] = 250  # cloud flag in the northernmost row
+    ds = sd.create("Snow_Cover_Monthly_CMG", SDC.UINT8, arr.shape)
+    ds[:] = arr
+    ds.endaccess()
+    sd.end()
+    ((month, fields, la, lo),) = p.reader(f, "2024-01-01T00:00:00Z")
+    snow = p.outputs["snow_cover"](fields, month)
+    assert month == 2024 * 12 and la[0] < la[-1]
+    assert np.isnan(snow[-1]).all() and snow[0, 0] == 40.0

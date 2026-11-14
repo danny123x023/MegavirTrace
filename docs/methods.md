@@ -14,9 +14,15 @@ the 1975–present warming rate within 0.002 °C per decade.
 
 ## 1. Data
 
-Eleven NASA products feed one monthly store (Table 1 of the design document). The products are OMI OMNO2d
+Seventeen NASA products feed one monthly store (Table 1 of the design document). The products are OMI OMNO2d
 v004, GLDAS Noah 2.1, GPM IMERG V07, MiCASA v1, MODIS MOD13C2 v061, NASA-SSH v1, MERRA-2 M2SMNXSLV and
 M2TMNXSLV, the GSFC GRACE/GRACE-FO mascons, AIRS AIRS3STM v7 and GISTEMP v4.
+
+Six more were added later (MODIS land surface temperature and snow cover, MERRA-2 aerosols, CERES EBAF energy
+budget, NSIDC-0051 sea ice and OCO-2 GEOS XCO₂). CERES comes as one file for the whole record, MODIS snow as HDF4
+without OPeNDAP, and sea ice on a 25 km polar stereographic grid. Sea-ice pixel centres are converted to latitude
+and longitude with the ellipsoidal inverse projection (Snyder 1987, Hughes ellipsoid, true scale at 70°; checked
+against NSIDC's published grid corners) and averaged into the 0.5° cells that contain them.
 
 Fields are regridded conservatively to a common 0.5° grid. AIRS keeps its 1° grid and GISTEMP its 2° grid.
 For regular latitude–longitude cells the regridding separates into a latitude overlap matrix, weighted by
@@ -183,6 +189,7 @@ results should be read with care.
 - Hirsch, R. M., Slack, J. R. & Smith, R. A. (1982). *Water Resour. Res.* 18, 107–121. doi:10.1029/WR018i001p00107
 - Lenssen, N. et al. (2019). *J. Geophys. Res. Atmos.* 124, 6307–6326. doi:10.1029/2018JD029522
 - Loomis, B. D., Luthcke, S. B. & Sabaka, T. J. (2019). *J. Geodesy* 93, 1381–1398. doi:10.1007/s00190-019-01252-y
+- Snyder, J. P. (1987). *Map Projections: A Working Manual*. USGS Professional Paper 1395.
 - Santer, B. D. et al. (2000). *J. Geophys. Res.* 105, 7337–7356. doi:10.1029/1999JD901105
 - Sen, P. K. (1968). *JASA* 63, 1379–1389. doi:10.1080/01621459.1968.10480934
 - van Giersbergen, N. P. A. (2005). *Economics Letters* 89, 75–82. doi:10.1016/j.econlet.2005.05.013

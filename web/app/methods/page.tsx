@@ -83,7 +83,7 @@ export default function MethodsPage() {
             </tbody>
           </table>
         </div>
-        <h3 style={{ marginTop: 14 }}>Coming next</h3>
+        {!!catalog?.planned.length && <h3 style={{ marginTop: 14 }}>Coming next</h3>}
         <ul>
           {catalog?.planned.map((p) => (
             <li key={p.id}>{p.name} — {p.dataset_info.product} (<a href={`https://doi.org/${p.dataset_info.doi}`} rel="noopener noreferrer" target="_blank">{p.dataset_info.doi}</a>)</li>

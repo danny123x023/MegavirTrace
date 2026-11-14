@@ -47,9 +47,9 @@ A non-significant verdict says how many more years of data a trend of that size 
 | Variable(s) | Product | Status |
 | --- | --- | --- |
 | Surface temperature change | GISTEMP v4 | **Real, global, 1880 to present.** Matches NASA's official global series: r = 0.9997, mean difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year (2024). |
-| Water stored on land | GSFC GRACE/GRACE-FO mascons | Real **test data** for the test box, 2016–2026 |
-| Fire carbon emissions | MiCASA v1 | Real **test data** for the test box, 2016-11 to 2024-12 |
-| The other 13 variables | OMI, GLDAS, GPM IMERG, MODIS, NASA-SSH, MERRA-2 (×2), AIRS | Code ready; needs a free NASA Earthdata Login (see below) |
+| Water stored on land | GSFC GRACE/GRACE-FO mascons | **Real, global, 2002 to present** (analysed month by month because of mission gaps) |
+| Fire carbon emissions | MiCASA v1 | **Real, global, 2001–2024** |
+| The other 19 variables | OMI, GLDAS, GPM IMERG, MODIS (×3), NASA-SSH, MERRA-2 (×3), AIRS, CERES, NSIDC, OCO-2 | Code ready; needs a free NASA Earthdata Login (see below) |
 
 The **test box** is about 5° × 5° on the US Gulf Coast (95–90°W, 27.5–32.5°N): Louisiana, east Texas, Houston
 and the Gulf of Mexico, so both land-only and sea-only variables have cells there. Test data are always
@@ -82,12 +82,12 @@ Open <http://localhost:3000>. `scripts/dev.sh status` and `scripts/dev.sh stop` 
 
 ### NASA Earthdata products
 
-Eight products need a free [Earthdata Login](https://urs.earthdata.nasa.gov). Set `EARTHDATA_TOKEN`, or
+Fourteen products need a free [Earthdata Login](https://urs.earthdata.nasa.gov). Set `EARTHDATA_TOKEN`, or
 `EARTHDATA_USERNAME` and `EARTHDATA_PASSWORD`, or add a `~/.netrc` entry for `urs.earthdata.nasa.gov`. Then:
 
 ```bash
 $I test all      # every product, test box and recent years only: small, quick, records time and size per product
-$I full all      # after development: the whole globe and record (about 41 GB), each product swapped in as a new version
+$I full all      # after development: the whole globe and record (about 47 GB), each product swapped in as a new version
 ```
 
 Downloads resume after a break and raw files stay on disk. Only the fields needed are requested through
@@ -146,14 +146,14 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 
 | ID | Requirement | Priority | Status |
 | --- | --- | --- | --- |
-| FR1 | Variable catalog | Must | Done: 16 variables, 7 themes, 11 products |
+| FR1 | Variable catalog | Must | Done: 22 variables, 7 themes, 17 products |
 | FR3 | Region selection | Must | Done: 39,089 places, 138 presets, drawn or typed box, real outlines |
 | FR4 | Regional time series | Must | Done: area-weighted, coverage per month, 4 modes, table view |
 | FR5 | Trend statistics | Must | Done, Monte Carlo verified |
 | FR6 | Template verdicts | Must | Done (English; Spanish templates in the engine) |
 | FR10 | Compare two regions | Must | Done, plus the opposite-trend finder |
 | FR20 | Security and cost | Must | Done |
-| FR2 | Six more variables | Should | Listed as planned (DOIs verified); not ingested |
+| FR2 | Six more variables | Should | Code ready: MODIS land surface temperature and snow cover, MERRA-2 aerosols, CERES energy budget, NSIDC sea ice, OCO-2 CO₂ (readers tested on fake files; downloads need Earthdata Login) |
 | FR7 | Speeding-up trends | Should | Done: curvature test with memory correction, calibrated so false "speeding up" claims stay within the targets |
 | FR8 | Cell trend map with FDR | Should | Done |
 | FR9 | 2D/3D Earth view | Should | Done (animated switch; instant with reduced motion) |
