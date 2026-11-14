@@ -20,6 +20,9 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 - **Ask the AI scientist (optional):** the AI turns a question into engine runs, then explains the results.
   It never computes. Every number and direction word it writes is checked against the stored results, and if
   anything fails the check you see the template verdict instead.
+- **Ground truth from NASA GLOBE:** for temperature and rainfall, measurements by GLOBE schools and volunteers in
+  the same place are shown beside the series as monthly anomalies, with how well the two move together.
+  Over Texas, 18 GLOBE sites track GISTEMP with r = 0.89. This is context only and never enters the trend tests.
 - **Take it away:** download CSV, Excel, PDF, or a notebook that recomputes every number with NumPy and SciPy
   alone. There are also embeddable trend cards and an open, read-only data API at `/api/docs`.
 
@@ -152,7 +155,7 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 | FR8 | Cell trend map with FDR | Should | Done |
 | FR9 | 2D/3D Earth view | Should | Done (animated switch; instant with reduced motion) |
 | FR12 | Variable guidance and scan | Should | Done |
-| FR14 | NASA GLOBE ground data | Should | Not started |
+| FR14 | NASA GLOBE ground data | Should | Done: GLOBE air temperature and rain gauges beside the series, as monthly anomalies with their correlation |
 | FR16 | Downloads | Should | Done; the notebook reproduces every number |
 | FR11 | "Moves together" explorer | Could | Not started |
 | FR13 | AI scientist and tutor | Could | Done; tested with fake clients, not yet with a live service |
@@ -163,6 +166,6 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 
 ## Credits and licences
 
-Data: NASA (GES DISC, LP DAAC, PO.DAAC, GISS, GSFC, NCCS). Each product is cited with its DOI in the app and
+Data: NASA (GES DISC, LP DAAC, PO.DAAC, GISS, GSFC, NCCS) and the NASA [GLOBE Program](https://www.globe.gov). Each product is cited with its DOI in the app and
 the exports. Place names: [GeoNames](https://www.geonames.org) (CC BY 4.0). Outlines and land:
 [Natural Earth](https://www.naturalearthdata.com) (public domain). Code: Apache 2.0 (see `LICENSE`).

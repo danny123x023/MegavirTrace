@@ -110,7 +110,24 @@ cancels, so correlated regions are not under-tested and anti-correlated ones are
 the difference per decade, its 95% interval, p, and the smallest difference the record could detect:
 (t₀.₉₇₅ + t₀.₈₀) × SE_adj, for 80% power.
 
-## 6. Validation
+## 6. Ground versus satellite: NASA GLOBE
+
+For temperature and rainfall, observations from the GLOBE Program (schools and citizen scientists) for the
+same region are fetched from the GLOBE API. Air temperature uses the daily high and low; precipitation uses
+rain-gauge accumulations and the days they cover.
+
+The GLOBE values become a regional monthly series:
+- each site-month needs readings on at least 10 days (temperature), or gauge readings covering at least
+  20 days, scaled to the whole month (rain);
+- the regional value is the mean over the sites that qualify that month, and only sites inside the region's
+  outline are used.
+
+Both series become monthly anomalies (each month minus that calendar month's mean over the shared months), and
+we report their correlation. Over Texas, 18 sites and 29,862 readings from 2012–2026 track GISTEMP with
+r = 0.89 over 178 months. GLOBE values are point measurements by volunteers at changing sites, so they are
+shown as context and never enter the trend tests.
+
+## 7. Validation
 
 | Check | Result |
 | --- | --- |
@@ -129,7 +146,7 @@ Still to do once Earthdata access is configured: regional IMERG and MERRA-2 seri
 averages for the test box (targets r ≥ 0.98 and mean difference within 5%), on the test data and again on
 the full download.
 
-## 7. Limitations
+## 8. Limitations
 
 A trend is not a cause. Records of 20–25 years detect only large trends against year-to-year variability, and
 the verdict says so. Reanalysis and land-model variables (MERRA-2, GLDAS) are model estimates constrained by

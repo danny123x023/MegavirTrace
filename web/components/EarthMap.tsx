@@ -18,6 +18,7 @@ type Props = {
   drawMode?: boolean;
   onBox?: (bbox: number[]) => void;
   height?: number;
+  points?: { lat: number; lon: number; name: string }[];
 };
 
 // The worker is copied to /public by `npm run copy-worker` (bundlers cannot resolve it reliably).
@@ -39,7 +40,7 @@ function reducedMotion(): boolean {
   return typeof window !== "undefined" && (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
 }
 
-export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height = 420 }: Props) {
+export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height = 420, points }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -62,6 +63,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
           cells: { type: "geojson", data: EMPTY },
           area: { type: "geojson", data: EMPTY },
           draft: { type: "geojson", data: EMPTY },
+          points: { type: "geojson", data: EMPTY },
         },
         layers: [
           { id: "sea", type: "background", paint: { "background-color": cssVar("--sea") } },
@@ -71,6 +73,10 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
           { id: "area", type: "line", source: "area", paint: { "line-color": cssVar("--text-secondary"), "line-width": 1.5, "line-dasharray": [2, 2] } },
           { id: "region-line", type: "line", source: "region", paint: { "line-color": cssVar("--text-primary"), "line-width": 2 } },
           { id: "draft", type: "line", source: "draft", paint: { "line-color": cssVar("--series-2"), "line-width": 2 } },
+          {
+            id: "points", type: "circle", source: "points",
+            paint: { "circle-radius": 5, "circle-color": cssVar("--series-2"), "circle-stroke-color": cssVar("--surface-1"), "circle-stroke-width": 2 },
+          },
         ],
       },
       center: [0, 20],
@@ -129,6 +135,16 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
       m.fitBounds([[w, s], [e, n]], { padding: 30, duration: reducedMotion() ? 0 : 600, maxZoom: 7 });
     }
   }, [outlines, dataArea, ready]);
+
+  // ---- points (GLOBE sites) ----------------------------------------------------------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !ready) return;
+    (m.getSource("points") as GeoJSONSource).setData({
+      type: "FeatureCollection",
+      features: (points ?? []).map((pt) => ({ type: "Feature", properties: { name: pt.name }, geometry: { type: "Point", coordinates: [pt.lon, pt.lat] } })),
+    });
+  }, [points, ready]);
 
   // ---- cells -------------------------------------------------------------------------------
   const ramp = useCallback(() => divergingFor(variable, isDark()), [variable]);

@@ -69,7 +69,7 @@ class OriginAndHeaders(BaseHTTPMiddleware):
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             if not origin or origin not in allowed:
                 return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
-        if request.url.path.startswith(("/analysis", "/ai", "/reports", "/v1")):
+        if request.url.path.startswith(("/analysis", "/ai", "/reports", "/v1", "/context")):
             ok, retry = self.limiter.allow(client_ip(request))
             if not ok:
                 return JSONResponse(

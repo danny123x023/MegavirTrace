@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EarthMap from "@/components/EarthMap";
+import GlobeCard, { type GlobeSite } from "@/components/GlobeCard";
 import { type Chosen, ModeControls, type ModeState, PlacePicker, VariablePicker } from "@/components/Pickers";
 import { Downloads, ExplainWithAI, StatTiles, VerdictCard } from "@/components/Result";
 import TrendChart from "@/components/TrendChart";
@@ -31,6 +32,7 @@ export default function ExploreClient() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawing, setDrawing] = useState(false);
+  const [globeSites, setGlobeSites] = useState<GlobeSite[]>([]);
   const ctl = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -163,9 +165,11 @@ export default function ExploreClient() {
                   dataArea={result.data.kind !== "real" ? result.data.bbox : null}
                   drawMode={drawing}
                   onBox={onBox}
+                  points={globeSites}
                 />
               </section>
               <ExplainWithAI id={result.id} />
+              <GlobeCard analysisId={result.id} variable={result.variable.id} satelliteLabel={result.variable.source_badge} onSites={setGlobeSites} />
             </div>
           </div>
           <h2 style={{ marginTop: 20 }}>The statistics</h2>

@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import os
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -253,6 +254,29 @@ def report_export(rid: str, format: str = Query("csv", pattern="^(csv|xlsx|pdf|i
     return Response(
         content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+# --------------------------------------------------------------------------------------
+# Context beside the observed trend: NASA GLOBE ground observations (FR14)
+# --------------------------------------------------------------------------------------
+
+
+@app.get("/context/globe")
+def context_globe(analysis_id: str = Query(min_length=8, max_length=64)):
+    from megavir.context.globe import GlobeError, ground_context
+
+    with connect() as conn:
+        rep = service.get_report(conn, analysis_id)
+        if not rep or rep["result"].get("kind") != "trend":
+            raise HTTPException(404, "unknown trend analysis")
+        try:
+            return ground_context(conn, rep["result"])
+        except GlobeError as e:
+            raise HTTPException(422, str(e)) from None
+        except httpx.HTTPError:
+            raise HTTPException(
+                502, "The GLOBE service could not be reached; please try again later."
+            ) from None
 
 
 # --------------------------------------------------------------------------------------

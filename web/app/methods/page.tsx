@@ -90,6 +90,7 @@ export default function MethodsPage() {
           ))}
         </ul>
         <p className="small muted">
+          Ground observations: the NASA <a href="https://www.globe.gov" rel="noopener noreferrer" target="_blank">GLOBE Program</a> (schools and citizen scientists), through the GLOBE API; shown beside the series as context, never used in the tests.{" "}
           Place names: GeoNames (CC BY 4.0). Country and state outlines: Natural Earth (public domain). The design document and the methods paper draft are in the
           repository (docs/methods.md).
         </p>
