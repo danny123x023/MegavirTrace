@@ -137,6 +137,11 @@ def main(argv: list[str] | None = None) -> None:
     pc.add_argument("variables", nargs="*", help="variable ids (default: every loaded variable)")
     pc.add_argument("--countries", action="store_true", help="also every country")
     sub.add_parser("gistemp-check")
+    gc = sub.add_parser(
+        "giovanni-check", help="compare test-box series with NASA Giovanni (needs Earthdata Login)"
+    )
+    gc.add_argument("variables", nargs="*", default=["air_temp", "rainfall"])
+    gc.add_argument("--points", type=int, default=5, help="points per side of the grid across the test box")
     sub.add_parser("status")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -208,6 +213,16 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.cmd == "precompute":
         cmd_precompute(conn, args.variables, args.countries)
+    elif args.cmd == "giovanni-check":
+        from .download import LoginRequired
+        from .giovanni import check
+
+        for var in args.variables:
+            try:
+                print(json.dumps(check(conn, var, points_per_side=args.points), indent=1))
+            except (LoginRequired, RuntimeError, KeyError) as e:
+                conn.rollback()
+                print(f"{var}: not checked: {e}", file=sys.stderr)
     elif args.cmd == "gistemp-check":
         print(json.dumps(cmd_gistemp_check(conn), indent=1))
     elif args.cmd == "status":

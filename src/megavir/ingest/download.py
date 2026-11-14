@@ -131,6 +131,22 @@ def earthdata_session():
     return s
 
 
+def earthdata_bearer() -> str:
+    """The Earthdata Login bearer token (for services such as Giovanni that need one).
+
+    Logs in the same way as ``earthdata_session``; the token is used in memory only.
+    """
+    import earthaccess
+
+    earthdata_session()
+    tok = earthaccess.get_edl_token()
+    if isinstance(tok, dict):
+        tok = tok.get("access_token")
+    if not tok:
+        raise LoginRequired("no Earthdata token is available for this login")
+    return str(tok)
+
+
 class PublicSession:
     """Minimal requests-like wrapper around httpx for public archives."""
 

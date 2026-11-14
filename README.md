@@ -46,6 +46,7 @@ A non-significant verdict says how many more years of data a trend of that size 
 
 | Variable(s) | Product | Status |
 | --- | --- | --- |
+| Air temperature (2 m) | MERRA-2 M2TMNXSLV | **Real, global, 1980 to present.** Matches NASA Giovanni over the test box: r = 0.9998, mean difference 1.6% (target r ≥ 0.98, within 5%) |
 | Surface temperature change | GISTEMP v4 | **Real, global, 1880 to present.** Matches NASA's official global series: r = 0.9997, mean difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year (2024). |
 | Water stored on land | GSFC GRACE/GRACE-FO mascons | **Real, global, 2002 to present** (analysed month by month because of mission gaps) |
 | Fire carbon emissions | MiCASA v1 | **Real, global, 2001–2024** |
@@ -73,6 +74,7 @@ $I places --download        # GeoNames + Natural Earth (public)
 $I masks                    # land fraction on 0.5°, 1° and 2° grids
 $I full gistemp             # 25 MB, public; then:
 $I gistemp-check            # compare with NASA's official global series
+$I giovanni-check           # MERRA-2 and IMERG test-box series vs NASA Giovanni (needs Earthdata Login)
 $I test grace               # public, 0.5 GB single file
 $I test micasa              # public, ~2 GB for the last 10 years
 $I precompute               # store statistics for all presets (once per data version)

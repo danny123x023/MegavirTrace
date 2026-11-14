@@ -167,11 +167,14 @@ shown as context and never enter the trend tests.
 | Vectorised cell engine vs per-series engine | Same slope and p |
 | GISTEMP global series vs NASA GLB.Ts+dSST (1880–2025) | r = 0.9997, mean absolute difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year |
 | Readers on fake files in each product's layout | Orientation, units, fills and dateline wrap correct |
+| MERRA-2 air temperature vs NASA Giovanni, test box, 36 months | r = 0.9998, mean difference 1.6% |
 | Exported notebook vs app | Every number reproduced |
 
-Still to do once Earthdata access is configured: regional IMERG and MERRA-2 series against NASA Giovanni area
-averages for the test box (targets r ≥ 0.98 and mean difference within 5%), on the test data and again on
-the full download.
+**NASA Giovanni.** Giovanni's time-series service answers one grid point at a time, from the product's native
+grid (MERRA-2 is served hourly, so its monthly means are formed from the hours). We average a 3 × 3 grid of
+points across the test box, weighted by cos(latitude), and compare with our stored, regridded box mean.
+MERRA-2 air temperature, Oct 2023 – Sep 2026: r = 0.9998, mean difference 1.6% (targets r ≥ 0.98, within 5%).
+IMERG rainfall is checked the same way once it is imported (`megavir-ingest giovanni-check rainfall`).
 
 ## 9. Limitations
 

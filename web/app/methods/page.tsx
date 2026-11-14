@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { apiGet, type Catalog } from "@/lib/api";
 import { fmt } from "@/lib/format";
 
+type GiovanniCheck = { correlation: number; relative_mean_difference: number; months: number; points: number; period: string[]; giovanni_data: string; ok: boolean; mean_ours: number; mean_giovanni: number; units: string };
+
 type Validation = {
   months?: number; valid_share?: number; area_mean?: number; is_global?: boolean;
   plausible?: { ok: boolean; range: number[]; note: string };
@@ -15,6 +17,9 @@ export default function MethodsPage() {
   useEffect(() => { apiGet<Catalog>("/variables").then(setCatalog).catch(() => {}); }, []);
 
   const gis = (catalog?.variables.find((v) => v.id === "temp_change")?.data?.validation as Validation | undefined)?.nasa_official_check;
+  const giovanni = ["air_temp", "rainfall"]
+    .map((id) => ({ id, name: catalog?.variables.find((v) => v.id === id)?.name, g: (catalog?.variables.find((v) => v.id === id)?.data?.validation as { giovanni_check?: GiovanniCheck } | undefined)?.giovanni_check }))
+    .filter((x) => x.g);
 
   return (
     <div className="prose" style={{ maxWidth: "none" }}>
@@ -55,9 +60,16 @@ export default function MethodsPage() {
         ) : (
           <p className="muted">The GISTEMP check runs after the import (megavir-ingest gistemp-check).</p>
         )}
+        {giovanni.map(({ id, name, g }) => g && (
+          <p key={id}>
+            <strong>{name} vs NASA Giovanni</strong> ({g.giovanni_data}, test box, {g.points} points, {g.period[0]} to {g.period[1]}): correlation{" "}
+            {fmt(g.correlation, 4)}, mean {fmt(g.mean_ours, 3)} vs {fmt(g.mean_giovanni, 3)} {g.units} (difference {fmt(g.relative_mean_difference * 100, 2)}%).{" "}
+            {g.ok ? "✓ Passed (target: r ≥ 0.98, within 5%)." : "✗ Did not pass."}
+          </p>
+        ))}
         <p className="small muted">
-          Regional IMERG and MERRA-2 series are checked against NASA Giovanni area averages for the test box (target: correlation ≥ 0.98, mean difference within 5%),
-          and every product gets a quick-look map and a global-mean plausibility check before it is used.
+          Regional IMERG and MERRA-2 series are checked against NASA Giovanni for the test box (target: correlation ≥ 0.98, mean difference within 5%), using
+          Giovanni point time series on a grid across the box. Every product also gets a quick-look map and a global-mean plausibility check before it is used.
         </p>
       </section>
 
