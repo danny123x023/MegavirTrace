@@ -260,3 +260,30 @@ def test_modis_snow_hdf4_flags(tmp_path):
     snow = p.outputs["snow_cover"](fields, month)
     assert month == 2024 * 12 and la[0] < la[-1]
     assert np.isnan(snow[-1]).all() and snow[0, 0] == 40.0
+
+
+def test_streaming_accumulator_means_and_memory_shape():
+    from megavir.ingest.pipeline import MonthlyAccumulator
+
+    spec = GridSpec.global_grid(2.0)
+    acc = MonthlyAccumulator(spec, min_count=3)
+    f = np.ones((spec.ny, spec.nx))
+    for month in (100, 101, 102):  # three "days" per month, in time order
+        for k in range(3):
+            acc.add(month, f * (month + k))
+    assert len(acc.open) <= MonthlyAccumulator.KEEP_OPEN  # finished months were closed as data moved on
+    acc.add(100, f * 1000)  # a late value reopens month 100
+    m0, cube = acc.cube()
+    assert m0 == 100 and cube.shape == (3, spec.ny, spec.nx) and cube.dtype == np.float32
+    assert cube[1, 0, 0] == pytest.approx(102.0)
+    assert cube[0, 0, 0] == pytest.approx((100 + 101 + 102 + 1000) / 4)
+
+
+def test_months_with_too_few_values_are_missing():
+    from megavir.ingest.pipeline import MonthlyAccumulator
+
+    spec = GridSpec.global_grid(2.0)
+    acc = MonthlyAccumulator(spec, min_count=3)
+    acc.add(5, np.ones((spec.ny, spec.nx)))
+    _, cube = acc.cube()
+    assert np.isnan(cube).all()

@@ -84,34 +84,54 @@ def target_spec(p: Product, mode: str) -> GridSpec:
 
 
 class MonthlyAccumulator:
-    """Sums and counts per month and variable on the target grid."""
+    """Monthly means for one variable on the target grid, streaming in time order.
 
-    def __init__(self, spec: GridSpec, variables: list[str], min_count: int):
+    Running sums are kept only for the months still being filled (inputs arrive sorted by
+    time, so at most a couple are open); finished months are stored as a float32 mean and a
+    uint16 count (so a late input can still be averaged in).  Memory is
+    about one float32 field per month instead of float64 sums and counts for every month of
+    every variable, which needed ~5 GB for MERRA-2 statistics at 0.5 degrees.
+    """
+
+    KEEP_OPEN = 2  # months kept open for slightly out-of-order inputs (e.g. north and south sea-ice files)
+
+    def __init__(self, spec: GridSpec, min_count: int):
         self.spec = spec
-        self.vars = variables
         self.min_count = min_count
-        self.sum: dict[tuple[str, int], np.ndarray] = {}
-        self.cnt: dict[tuple[str, int], np.ndarray] = {}
+        self.open: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        self.done: dict[int, tuple[np.ndarray, np.ndarray]] = {}  # month -> (mean float32, count uint16)
 
-    def add(self, var: str, month: int, field: np.ndarray) -> None:
-        key = (var, month)
+    def add(self, month: int, field: np.ndarray) -> None:
+        if month in self.done:  # a late input for a finished month: reopen it with its sums and counts
+            mean, cnt = self.done.pop(month)
+            c = cnt.astype(np.int32)
+            self.open[month] = (np.where(c > 0, np.nan_to_num(mean.astype(float)) * c, 0.0), c)
+        if month not in self.open:
+            self.open[month] = (np.zeros(field.shape), np.zeros(field.shape, np.int32))
+        s, c = self.open[month]
         ok = np.isfinite(field)
-        if key not in self.sum:
-            self.sum[key] = np.zeros(field.shape)
-            self.cnt[key] = np.zeros(field.shape, np.int32)
-        self.sum[key][ok] += field[ok]
-        self.cnt[key][ok] += 1
+        s[ok] += field[ok]
+        c[ok] += 1
+        for m in sorted(self.open)[: -self.KEEP_OPEN]:
+            self._finish(m)
 
-    def cube(self, var: str) -> tuple[int, np.ndarray] | None:
-        months = sorted(m for v, m in self.sum if v == var)
-        if not months:
+    def _finish(self, month: int) -> None:
+        s, c = self.open.pop(month)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = np.where(c > 0, s / c, np.nan).astype(np.float32)
+        self.done[month] = (mean, np.minimum(c, 65535).astype(np.uint16))
+
+    def cube(self) -> tuple[int, np.ndarray] | None:
+        for m in list(self.open):
+            self._finish(m)
+        if not self.done:
             return None
+        months = sorted(self.done)
         m0, m1 = months[0], months[-1]
         out = np.full((m1 - m0 + 1, self.spec.ny, self.spec.nx), np.nan, np.float32)
         for m in months:
-            s, c = self.sum[(var, m)], self.cnt[(var, m)]
-            with np.errstate(invalid="ignore", divide="ignore"):
-                out[m - m0] = np.where(c >= self.min_count, s / c, np.nan)
+            mean, cnt = self.done.pop(m)  # free each month as it is copied
+            out[m - m0] = np.where(cnt >= self.min_count, mean, np.nan)
         return m0, out
 
 
@@ -352,10 +372,7 @@ def run(
     p = PRODUCTS[product_id]
     report = RunReport(product_id, mode)
     spec = target_spec(p, mode)
-    var_ids = list(p.outputs)
-    acc = MonthlyAccumulator(spec, var_ids, p.min_per_month)
     regridders: dict[tuple, Regridder] = {}
-    t0 = time.time()
 
     def regrid(field: np.ndarray, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
         key = (lats[0], lats[-1], lats.size, lons[0], lons[-1], lons.size)
@@ -363,57 +380,61 @@ def run(
             regridders[key] = Regridder(NativeGrid.from_centres(lats, lons), spec)
         return regridders[key](field)
 
+    # 1. download (resumable; files stay on disk)
     if p.access == "opendap":
         files = _opendap_files(p, mode, raw, report, limit)
-        t0 = time.time()
-        for begin, path, info in files:
-            if p.multi_time:
-                m0 = month_abs_from_iso(begin) + info["t_offset"]
-                for k, fields, la, lo in multi_time_fields(
-                    path, p, info["lats"], info["lons"], info["lon_first"]
-                ):
-                    for v in var_ids:
-                        acc.add(v, m0 + k, regrid(p.outputs[v](fields, m0 + k), la, lo))
-                continue
-            month = month_abs_from_iso(begin)
-            fields, la, lo = standard_fields(path, p, info["lats"], info["lons"], info["lon_first"])
-            for v in var_ids:
-                acc.add(v, month, regrid(p.outputs[v](fields, month), la, lo))
     elif p.access == "download":
         files = _download_files(p, mode, raw, report, limit)
-        t0 = time.time()
-        for begin, path in files:
-            for month, fields, la, lo in p.reader(path, begin):
-                for v in var_ids:
-                    f = p.outputs[v](fields, month)
-                    if p.projected:
-                        acc.add(v, month, bin_to_grid(la, lo, f, spec))
-                    else:
-                        acc.add(v, month, regrid(f, la, lo))
     else:
-        paths = _public_files(p, mode, raw, report, limit)
-        t0 = time.time()
-        start, end = time_range(p, mode)
-        m_lo, m_hi = month_abs_from_iso(start), month_abs_from_iso(end)
-        for path in paths:
-            for month, fields, lats, lons in _read_public(p, path):
-                if not (m_lo <= month <= m_hi):
+        files = _public_files(p, mode, raw, report, limit)
+    t0 = time.time()
+
+    def records():
+        """(month, fields, lats, lons) from the local files, in time order."""
+        if p.access == "opendap":
+            for begin, path, info in files:
+                if p.multi_time:
+                    m0 = month_abs_from_iso(begin) + info["t_offset"]
+                    for k, fields, la, lo in multi_time_fields(
+                        path, p, info["lats"], info["lons"], info["lon_first"]
+                    ):
+                        yield m0 + k, fields, la, lo
                     continue
-                for v in var_ids:
-                    f = p.outputs[v](fields, month)
-                    f, la, lo = _std(f, lats, lons)
-                    acc.add(v, month, regrid(f, la, lo))
+                fields, la, lo = standard_fields(path, p, info["lats"], info["lons"], info["lon_first"])
+                yield month_abs_from_iso(begin), fields, la, lo
+        elif p.access == "download":
+            for begin, path in files:
+                yield from p.reader(path, begin)
+        else:
+            start, end = time_range(p, mode)
+            m_lo, m_hi = month_abs_from_iso(start), month_abs_from_iso(end)
+            for path in files:
+                for month, fields, lats, lons in _read_public(p, path):
+                    if m_lo <= month <= m_hi:
+                        yield month, fields, lats, lons
 
     land = _land_mask_for(conn, spec)
     kind = "test" if mode == "test" else "real"
     ds = DATASETS[p.id]
-    for v in var_ids:
-        got = acc.cube(v)
+    # 2. one variable at a time, so memory holds one variable's cube
+    for v in p.outputs:
+        acc = MonthlyAccumulator(spec, p.min_per_month)
+        for month, fields, la, lo in records():
+            f = p.outputs[v](fields, month)
+            if p.projected:
+                acc.add(month, bin_to_grid(la, lo, f, spec))
+            elif p.access == "public":
+                f, la2, lo2 = _std(f, la, lo)
+                acc.add(month, regrid(f, la2, lo2))
+            else:
+                acc.add(month, regrid(f, la, lo))
+        got = acc.cube()
+        del acc
         if got is None:
             continue
         m0, cube = got
         dom = p.domain_mask.get(v)
-        if dom and land is not None:  # AIRS skin temperature split into ground and sea
+        if dom and land is not None:  # e.g. AIRS skin temperature split into ground and sea
             cube[:, (land < 0.5) if dom == "land" else (land >= 0.5)] = np.nan
         validation = validate_cube(v, cube, spec, m0, kind, raw.parent / "quicklook")
         source = {
@@ -427,7 +448,8 @@ def run(
         }
         vid = write_version(conn, v, kind, spec, m0, cube, VARIABLES[v].units, source, validation, activate)
         report.versions[v] = {"version": vid, "months": int(cube.shape[0]), "validation": validation}
-    conn.commit()
+        conn.commit()
+        del cube
     report.process_s = time.time() - t0
     return report
 
