@@ -26,6 +26,8 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 - **Ground truth from NASA GLOBE:** for temperature and rainfall, measurements by GLOBE schools and volunteers in
   the same place are shown beside the series as monthly anomalies, with how well the two move together.
   Over Texas, 18 GLOBE sites track GISTEMP with r = 0.89. This is context only and never enters the trend tests.
+- **English and Spanish, offline, phone-first:** switch language from the header (verdicts come from Spanish
+  templates with Spanish number formats). After one visit, pages and recent results open without a connection.
 - **Take it away:** download CSV, Excel, PDF, or a notebook that recomputes every number with NumPy and SciPy
   alone. There are also embeddable trend cards and an open, read-only data API at `/api/docs`.
 
@@ -167,7 +169,7 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 | FR15 | CMIP6 projections | Could | Not started |
 | FR17 | Embeds and open API | Could | Done |
 | FR18 | Methods paper and contributor guide | Could | Drafts in `docs/` and `CONTRIBUTING.md` |
-| FR19 | Languages, offline | Could | Partial: Spanish verdict templates only |
+| FR19 | Languages, offline | Could | Done: English and Spanish (interface, catalog and verdicts); works offline after one visit (service worker plus recent results kept on the device); phone-first layout checked at 390 px |
 
 ## Credits and licences
 

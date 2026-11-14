@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt, fmtSigned, niceTicks, tickLabel } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 
 export type ChartSeries = {
   key: string;
@@ -25,6 +26,7 @@ type Props = {
 const PAD = { left: 52, right: 16, top: 12, bottom: 30 };
 
 export default function TrendChart({ title, labels, t, series, units, trend, height = 300, zeroLine }: Props) {
+  const { t: tr } = useI18n();
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState<number | null>(null);
@@ -120,7 +122,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
       <figcaption className="row" style={{ justifyContent: "space-between" }}>
         <strong>{title}</strong>
         <button type="button" onClick={() => setShowTable((s) => !s)} aria-pressed={showTable}>
-          {showTable ? "Show chart" : "Show table"}
+          {showTable ? tr("Show chart") : tr("Show table")}
         </button>
       </figcaption>
       {series.length + (trend ? 1 : 0) >= 2 && !showTable && (
@@ -131,7 +133,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
           {trend && (
             <>
               <span className="key"><i style={{ background: "var(--series-2)" }} />{trend.label}</span>
-              {fan && <span className="key"><i className="band" style={{ background: "var(--series-2)" }} />95% range of the trend</span>}
+              {fan && <span className="key"><i className="band" style={{ background: "var(--series-2)" }} />{tr("95% range of the trend")}</span>}
             </>
           )}
         </div>
@@ -141,9 +143,9 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
           <table className="data">
             <thead>
               <tr>
-                <th scope="col">Period</th>
+                <th scope="col">{tr("Period")}</th>
                 {series.map((s) => <th scope="col" key={s.key}>{s.label} ({units})</th>)}
-                {trend && <th scope="col">Trend line ({units})</th>}
+                {trend && <th scope="col">{tr("Trend line")} ({units})</th>}
               </tr>
             </thead>
             <tbody>
@@ -163,7 +165,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
           className="chart-wrap"
           tabIndex={0}
           role="img"
-          aria-label={`${title}. ${idx.length} values from ${labels[idx[0]]} to ${labels[idx[idx.length - 1]]}, in ${units}. Use the left and right arrow keys to read values, or open the table.`}
+          aria-label={tr("{title}. {n} values from {a} to {b}, in {units}. Use the left and right arrow keys to read values, or open the table.", { title, n: idx.length, a: labels[idx[0]], b: labels[idx[idx.length - 1]], units })}
           onMouseMove={(e) => setHover(nearest(e.clientX))}
           onMouseLeave={() => setHover(null)}
           onKeyDown={onKey}

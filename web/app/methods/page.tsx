@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, type Catalog } from "@/lib/api";
 import { fmt } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 
 type GiovanniCheck = { correlation: number; relative_mean_difference: number; months: number; points: number; period: string[]; giovanni_data: string; ok: boolean; mean_ours: number; mean_giovanni: number; units: string };
 
@@ -13,6 +14,7 @@ type Validation = {
 };
 
 export default function MethodsPage() {
+  const { lang, t } = useI18n();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   useEffect(() => { apiGet<Catalog>("/variables").then(setCatalog).catch(() => {}); }, []);
 
@@ -23,13 +25,14 @@ export default function MethodsPage() {
 
   return (
     <div className="prose" style={{ maxWidth: "none" }}>
-      <h1>Method &amp; data</h1>
+      <h1>{t("Method & data")}</h1>
+      {lang !== "en" && <p className="small muted">{t("The detailed method below is in English.")}</p>}
       <p className="lede">
         Three commitments, never reduced: the four questions for any place on real NASA data; honest significance; and every number traceable.
       </p>
 
       <section className="card" aria-labelledby="m-h">
-        <h2 id="m-h">How a verdict is made</h2>
+        <h2 id="m-h">{t("How a verdict is made")}</h2>
         <ol>
           <li><strong>Regional series.</strong> Area-weighted mean over the cells of the region (cell fraction × cos latitude × land or sea share), with the share of the region covered each month. A year needs 10 of 12 months; a season all 3; monthly mode removes the seasonal cycle.</li>
           <li><strong>Least squares</strong> slope with a 95% interval and t-test; the standard error is widened with the effective sample size n<sub>eff</sub> = n(1 − r₁)/(1 + r₁), using the lag-1 autocorrelation of the residuals, corrected for its small-sample bias (2 + 4r₁)/n (van Giersbergen 2005).</li>
@@ -49,7 +52,7 @@ export default function MethodsPage() {
       </section>
 
       <section className="card" style={{ marginTop: 16 }} aria-labelledby="v-h">
-        <h2 id="v-h">Checked against NASA&apos;s own numbers</h2>
+        <h2 id="v-h">{t("Checked against NASA's own numbers")}</h2>
         {gis ? (
           <p>
             <strong>GISTEMP:</strong> our global series from the gridded file matches NASA&apos;s official global series (GLB.Ts+dSST): correlation{" "}
@@ -74,7 +77,7 @@ export default function MethodsPage() {
       </section>
 
       <section className="card" style={{ marginTop: 16 }} aria-labelledby="d-h">
-        <h2 id="d-h">Data sources</h2>
+        <h2 id="d-h">{t("Data sources")}</h2>
         <div className="table-scroll" style={{ maxHeight: "none" }}>
           <table className="data">
             <thead>
@@ -109,7 +112,7 @@ export default function MethodsPage() {
       </section>
 
       <section className="card" style={{ marginTop: 16 }} aria-labelledby="r-h">
-        <h2 id="r-h">References</h2>
+        <h2 id="r-h">{t("References")}</h2>
         <ul className="small">
           <li>Benjamini, Y. &amp; Hochberg, Y. (1995). Controlling the false discovery rate. <a href="https://doi.org/10.1111/j.2517-6161.1995.tb02031.x">doi:10.1111/j.2517-6161.1995.tb02031.x</a></li>
           <li>Hirsch, R. M., Slack, J. R. &amp; Smith, R. A. (1982). Techniques of trend analysis for monthly water quality data. <a href="https://doi.org/10.1029/WR018i001p00107">doi:10.1029/WR018i001p00107</a></li>

@@ -33,7 +33,7 @@ from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
 from megavir.places.geometry import apply_domain, cells_for
 from megavir.store import GridSpec, Version, active_versions, read_cells, read_mask
 
-ENGINE_VERSION = "2026.11-6"
+ENGINE_VERSION = "2026.11-7"
 MAX_MAP_CELLS = 40_000
 
 
@@ -86,8 +86,12 @@ _THE_PRESET = re.compile(
 )
 
 
-def in_phrase(name: str, kind: str) -> str:
+def in_phrase(name: str, kind: str, lang: str = "en") -> str:
     """How a place reads after "in": "the whole Earth", "the Amazon Basin", "the United States"."""
+    if lang == "es":
+        if kind == "city":
+            return f"los alrededores de {name}"
+        return "toda la Tierra" if name == "Whole Earth" else name
     if kind == "city":
         return f"the area around {name}"
     special = {
@@ -111,7 +115,7 @@ def in_phrase(name: str, kind: str) -> str:
     return name
 
 
-def resolve_region(conn, spec: dict) -> Region:
+def resolve_region(conn, spec: dict, lang: str = "en") -> Region:
     """spec: {"place": id} or {"bbox": [w, s, e, n], "name"?: str}."""
     if spec.get("place"):
         r = conn.execute(
@@ -119,7 +123,7 @@ def resolve_region(conn, spec: dict) -> Region:
         ).fetchone()
         if not r:
             raise AnalysisError(f"unknown place {spec['place']!r}")
-        name = in_phrase(r["name"], r["kind"])
+        name = in_phrase(r["name"], r["kind"], lang)
         return Region(r["id"], name, r["kind"], list(r["bbox"]), r["geometry"], r["context"])
     b = spec.get("bbox")
     if not b or len(b) != 4:
@@ -294,7 +298,7 @@ def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
         return hit
     t0 = time.time()
     var = VARIABLES[req["variable"]]
-    region = resolve_region(conn, req["region"])
+    region = resolve_region(conn, req["region"], req["lang"])
     rd = regional_monthly(conn, req["variable"], region, need_cells=req["cell_map"])
     s = build_series(
         rd.months,
@@ -444,8 +448,8 @@ def run_compare(conn, raw: dict, use_cache: bool = True) -> dict:
     if use_cache and (hit := cached(conn, fid)):
         return hit
     var = VARIABLES[req["variable"]]
-    A = resolve_region(conn, req["region_a"])
-    B = resolve_region(conn, req["region_b"])
+    A = resolve_region(conn, req["region_a"], req["lang"])
+    B = resolve_region(conn, req["region_b"], req["lang"])
     da = regional_monthly(conn, req["variable"], A)
     db = regional_monthly(conn, req["variable"], B)
     args = (req["mode"], req["season"], req["start_year"], req["end_year"], var.agg)
@@ -503,14 +507,14 @@ def run_scan(conn, raw: dict) -> dict:
                 },
             )
         except AnalysisError as e:
-            rows.append({"variable": var_id, "name": VARIABLES[var_id].name, "error": str(e)})
+            rows.append({"variable": var_id, "name": VARIABLES[var_id].local(lang)["name"], "error": str(e)})
             continue
         st = r["stats"]
         p_joint = max(st["mk"]["p"], st["ols"]["p"]) if st["agree"] and st["ols"]["testable"] else 1.0
         rows.append(
             {
                 "variable": var_id,
-                "name": VARIABLES[var_id].name,
+                "name": VARIABLES[var_id].local(lang)["name"],
                 "theme": VARIABLES[var_id].theme,
                 "analysis_id": r["id"],
                 "per_decade": st["per_decade"]["sen"],
@@ -709,7 +713,7 @@ def run_related(conn, raw: dict, use_cache: bool = True) -> dict:
     fid = fingerprint("related", req, ids)
     if use_cache and (hit := cached(conn, fid)):
         return hit
-    reg = resolve_region(conn, region)
+    reg = resolve_region(conn, region, lang)
     da = regional_monthly(conn, va, reg)
     db = regional_monthly(conn, vb, reg)
     months = np.union1d(da.months, db.months)
@@ -724,7 +728,9 @@ def run_related(conn, raw: dict, use_cache: bool = True) -> dict:
         )
     kinds = {versions[va].kind, versions[vb].kind}
     kind = "synthetic" if "synthetic" in kinds else "test" if "test" in kinds else "real"
-    verdict = related_verdict(rel, VARIABLES[va].name, VARIABLES[vb].name, reg.name, lang, kind)
+    verdict = related_verdict(
+        rel, VARIABLES[va].local(lang)["name"], VARIABLES[vb].local(lang)["name"], reg.name, lang, kind
+    )
     result = _jsonable(
         {
             "id": fid,

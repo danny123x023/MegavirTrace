@@ -5,6 +5,7 @@ import type { GeoJSONSource, Map as MLMap } from "maplibre-gl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CellMap } from "@/lib/api";
 import { fmt, fmtSigned } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import { divergingFor, isDark } from "@/lib/palette";
 
 type Outline = { geometry?: GeoJSON.Geometry | null; bbox?: number[] | null; label?: string };
@@ -49,6 +50,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
   const [hoverInfo, setHoverInfo] = useState<string>("");
   const [themeTick, setThemeTick] = useState(0);
   const drawStart = useRef<maplibregl.LngLat | null>(null);
+  const { t } = useI18n();
 
   // ---- create the map once --------------------------------------------------------------
   useEffect(() => {
@@ -101,6 +103,10 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
       map.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    map.current?.getCanvas().setAttribute("aria-label", t("Map. Drag or use the arrow keys to move, plus and minus to zoom."));
+  }, [t, ready]);
 
   // ---- theme colours -------------------------------------------------------------------
   useEffect(() => {
@@ -249,39 +255,42 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
   return (
     <div>
       <div className="map-tools">
-        <div className="segmented" role="group" aria-label="Map view">
-          <button type="button" aria-pressed={!globe} onClick={() => globe && toggleProjection()}>Flat map (2D)</button>
-          <button type="button" aria-pressed={globe} onClick={() => !globe && toggleProjection()}>Globe (3D)</button>
+        <div className="segmented" role="group" aria-label={t("Map view")}>
+          <button type="button" aria-pressed={!globe} onClick={() => globe && toggleProjection()}>{t("Flat map (2D)")}</button>
+          <button type="button" aria-pressed={globe} onClick={() => !globe && toggleProjection()}>{t("Globe (3D)")}</button>
         </div>
         {hasCells && (
           <label className="row small">
             <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
-            Show raw view (no false-discovery fading)
+            {t("Show raw view (no false-discovery fading)")}
           </label>
         )}
       </div>
       <div ref={box} className="map-box" style={{ height }} />
       {hasCells && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
-          <div className="legend-ramp" aria-label="Colour scale">
+          <div className="legend-ramp" aria-label={t("Colour scale")}>
             <span>{fmtSigned(-scaleMax, 2)}</span>
             <span className="swatches" aria-hidden="true">
               {[...r.negative].reverse().map((c) => <span key={c} style={{ background: c }} />)}
               <span style={{ background: r.mid }} />
               {r.positive.map((c) => <span key={c} style={{ background: c }} />)}
             </span>
-            <span>{fmtSigned(scaleMax, 2)} {units} per decade</span>
+            <span>{fmtSigned(scaleMax, 2)} {t("{units} per decade", { units })}</span>
           </div>
           <p className="small muted" style={{ margin: 0 }}>
-            {(cells as Exclude<CellMap, { skipped: string }>).n_pass} of {(cells as Exclude<CellMap, { skipped: string }>).n_cells} cells pass the false-discovery
-            test (faded cells do not; q ≤ {(cells as Exclude<CellMap, { skipped: string }>).alpha_fdr}, tuned for neighbouring cells that move together, Wilks 2016).{" "}
-            {(cells as Exclude<CellMap, { skipped: string }>).caveat} Based on {(cells as Exclude<CellMap, { skipped: string }>).basis}.
+            {t("{n} of {m} cells pass the false-discovery test (faded cells do not; q ≤ {q}, tuned for neighbouring cells that move together, Wilks 2016).", {
+              n: (cells as Exclude<CellMap, { skipped: string }>).n_pass,
+              m: (cells as Exclude<CellMap, { skipped: string }>).n_cells,
+              q: (cells as Exclude<CellMap, { skipped: string }>).alpha_fdr,
+            })}{" "}
+            {t((cells as Exclude<CellMap, { skipped: string }>).caveat)} {t("Based on {basis}.", { basis: (cells as Exclude<CellMap, { skipped: string }>).basis })}
           </p>
           <p className="small" aria-live="polite" style={{ margin: 0, minHeight: "1.3em" }}>{hoverInfo}</p>
         </div>
       )}
-      {cells && "skipped" in cells && <p className="small muted">Cell map: {cells.skipped}.</p>}
-      {dataArea && <p className="small muted" style={{ margin: "4px 0 0" }}>Dashed box: the only area this variable has data for so far.</p>}
+      {cells && "skipped" in cells && <p className="small muted">{t("Cell map:")} {cells.skipped}.</p>}
+      {dataArea && <p className="small muted" style={{ margin: "4px 0 0" }}>{t("Dashed box: the only area this variable has data for so far.")}</p>}
     </div>
   );
 }

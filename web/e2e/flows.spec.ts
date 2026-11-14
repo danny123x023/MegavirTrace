@@ -77,3 +77,37 @@ test("moves together: verdict, lag chart and the not-a-cause caveat", async ({ p
   await expect(page.getByText(/not caused by/).first()).toBeVisible();
   await expect(page.getByRole("img", { name: /Correlation by lag/ })).toBeVisible();
 });
+
+test("Spanish interface with a Spanish verdict from the server", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("mt-lang", "es"));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("¿De verdad está cambiando este lugar?");
+  await expect(page.locator(".verdict h2")).toContainText(/por década|sin tendencia clara|evidencia es mixta/i);
+  await expect(page.locator("html")).toHaveAttribute("lang", "es");
+});
+
+test("works offline after one visit (production build)", async ({ page, context }) => {
+  await page.goto("/?v=temp_change&place=admin1%3AUS-TX&label=Texas");
+  await expect(page.locator(".verdict h2")).toBeVisible();
+  const hasWorker = await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator) || (await navigator.serviceWorker.getRegistrations()).length === 0) return false;
+    await navigator.serviceWorker.ready;
+    return true;
+  });
+  test.skip(!hasWorker, "the service worker registers only in production builds");
+  await page.reload();
+  await expect(page.locator(".verdict h2")).toBeVisible();
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.locator(".verdict h2")).toContainText("Texas", { timeout: 15000 });
+  await expect(page.locator(".offline-banner")).toBeVisible();
+  await context.setOffline(false);
+});
+
+test("phone layout: nothing wider than the screen", async ({ browser }) => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto("/");
+  await expect(page.locator(".verdict h2")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.close();
+});

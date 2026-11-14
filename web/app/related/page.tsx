@@ -7,6 +7,7 @@ import { DataFlag } from "@/components/Result";
 import TrendChart from "@/components/TrendChart";
 import { apiGet, apiPost, type Catalog, exportUrl, type Verdict } from "@/lib/api";
 import { fmt } from "@/lib/format";
+import { useI18n, varText } from "@/lib/i18n";
 
 type Related = {
   id: string;
@@ -23,6 +24,7 @@ type Related = {
 };
 
 export default function RelatedPage() {
+  const { lang, t: tr } = useI18n();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [a, setA] = useState("");
   const [b, setB] = useState("");
@@ -51,10 +53,10 @@ export default function RelatedPage() {
     if (!a || !b || !place) return;
     if (a === b) { setError("Choose two different variables."); return; }
     setBusy(true); setError(null);
-    try { setRes(await apiPost<Related>("/analysis/related", { variable_a: a, variable_b: b, region: place.region, max_lag: maxLag })); }
+    try { setRes(await apiPost<Related>("/analysis/related", { variable_a: a, variable_b: b, region: place.region, max_lag: maxLag, lang })); }
     catch (e) { setError((e as Error).message); }
     setBusy(false);
-  }, [a, b, place, maxLag]);
+  }, [a, b, place, maxLag, lang]);
   useEffect(() => { run(); }, [run]);
 
   const rel = res?.relationship;
@@ -62,7 +64,7 @@ export default function RelatedPage() {
 
   return (
     <div>
-      <h1>Do two things move together?</h1>
+      <h1>{tr("Do two things move together?")}</h1>
       <p className="lede">
         Pick a place and two variables. MegavirTrace removes each seasonal cycle and long-term trend, then asks whether the month-to-month
         ups and downs line up, with a delay of up to {maxLag} months. <strong>Related is not caused by.</strong>
@@ -72,9 +74,9 @@ export default function RelatedPage() {
         <VariablePicker catalog={catalog} value={a} onChange={setA} label="Variable A" />
         <VariablePicker catalog={catalog} value={b} onChange={setB} label="Variable B" />
         <div className="field">
-          <label htmlFor="maxlag">Longest delay</label>
+          <label htmlFor="maxlag">{tr("Longest delay")}</label>
           <select id="maxlag" value={maxLag} onChange={(e) => setMaxLag(Number(e.target.value))}>
-            {[0, 3, 6, 12, 24].map((k) => <option key={k} value={k}>{k === 0 ? "same month only" : `${k} months`}</option>)}
+            {[0, 3, 6, 12, 24].map((k) => <option key={k} value={k}>{k === 0 ? tr("same month only") : tr("{n} months", { n: k })}</option>)}
           </select>
         </div>
       </div>
@@ -85,7 +87,7 @@ export default function RelatedPage() {
           <div className="grid-2">
             <section className="card verdict" aria-labelledby="rel-h">
               <DataFlag kind={res.data_kind} />
-              <span className="status-pill"><span aria-hidden="true">{rel.significant ? "⇄" : "○"}</span>{rel.significant ? "They move together" : "No clear relationship"}</span>
+              <span className="status-pill"><span aria-hidden="true">{rel.significant ? "⇄" : "○"}</span>{rel.significant ? tr("They move together") : tr("No clear relationship")}</span>
               <h2 id="rel-h">{res.verdict.headline}</h2>
               {res.verdict.sentences.map((s, i) => <p key={i}>{s}</p>)}
               <ul className="caveats">{res.verdict.caveats.map((c) => <li key={c}>{c}</li>)}</ul>

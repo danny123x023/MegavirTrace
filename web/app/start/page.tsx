@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type Chosen, PlacePicker } from "@/components/Pickers";
 import { apiGet, apiPost, type Catalog } from "@/lib/api";
 import { fmt, fmtSigned } from "@/lib/format";
+import { useI18n, varText } from "@/lib/i18n";
 
 const PLACE_TYPES: Record<string, { label: string; vars: string[] }> = {
   city: { label: "A city", vars: ["no2", "nightly_low", "daily_high", "downpour", "air_temp"] },
@@ -31,6 +32,7 @@ type ScanRow = {
 };
 
 export default function StartPage() {
+  const { lang, t } = useI18n();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [ptype, setPtype] = useState("anywhere");
   const [curious, setCurious] = useState<string | null>(null);
@@ -57,29 +59,29 @@ export default function StartPage() {
 
   return (
     <div>
-      <h1>Where do I start?</h1>
+      <h1>{t("Where do I start?")}</h1>
       <p className="lede">Answer two quick questions and we suggest variables worth checking. Or pick a place and let MegavirTrace test every variable for you.</p>
 
       <div className="grid-2">
         <section className="card" aria-labelledby="q-h">
-          <h2 id="q-h">1. What kind of place?</h2>
+          <h2 id="q-h">{t("1. What kind of place?")}</h2>
           <div className="chip-list" role="group" aria-label="Kind of place">
             {Object.entries(PLACE_TYPES).map(([k, v]) => (
               <button key={k} type="button" className="chip" aria-pressed={ptype === k} onClick={() => setPtype(k)}>{v.label}</button>
             ))}
           </div>
-          <h2 style={{ marginTop: 16 }}>2. What are you curious about?</h2>
+          <h2 style={{ marginTop: 16 }}>{t("2. What are you curious about?")}</h2>
           <div className="chip-list" role="group" aria-label="Curiosity">
             {Object.entries(CURIOSITY).map(([k, v]) => (
               <button key={k} type="button" className="chip" aria-pressed={curious === k} onClick={() => setCurious(curious === k ? null : k)}>{v.label}</button>
             ))}
           </div>
-          <h2 style={{ marginTop: 16 }}>Suggested variables</h2>
+          <h2 style={{ marginTop: 16 }}>{t("Suggested variables")}</h2>
           <ul className="prose">
             {suggestions.map((v) => (
               <li key={v.id}>
-                <strong>{v.name}</strong> ({v.source_badge}) — {v.why_it_can_trend}{" "}
-                {v.data ? <Link href={`/?v=${v.id}${placeQuery}`}>Explore it</Link> : <span className="muted">(not loaded yet)</span>}
+                <strong>{varText(v, lang)}</strong> ({v.source_badge}) — {varText(v, lang, "why_it_can_trend")}{" "}
+                {v.data ? <Link href={`/?v=${v.id}${placeQuery}`}>{t("Explore it")}</Link> : <span className="muted">(not loaded yet)</span>}
                 {v.data && v.data.kind !== "real" && <span className="muted small"> · {v.data.kind} data only</span>}
               </li>
             ))}
@@ -87,7 +89,7 @@ export default function StartPage() {
         </section>
 
         <section className="card" aria-labelledby="scan-h">
-          <h2 id="scan-h">What is changing here?</h2>
+          <h2 id="scan-h">{t("What is changing here?")}</h2>
           <p className="muted small">
             Tests every loaded variable for one place. Testing many variables at once raises the chance of a false alarm, so the results use
             false-discovery control across the variables (Benjamini–Hochberg, q ≤ 0.05).
@@ -97,9 +99,9 @@ export default function StartPage() {
             <button type="button" className="primary" disabled={!place || busy} onClick={async () => {
               if (!place) return;
               setBusy(true); setError(null);
-              try { setScan(await apiPost("/analysis/scan", { region: place.region })); } catch (e) { setError((e as Error).message); }
+              try { setScan(await apiPost("/analysis/scan", { region: place.region, lang })); } catch (e) { setError((e as Error).message); }
               setBusy(false);
-            }}>{busy ? "Testing every variable…" : "Test every variable"}</button>
+            }}>{busy ? t("Testing every variable…") : t("Test every variable")}</button>
           </div>
           {error && <p className="error" role="alert">{error}</p>}
           {scan && (

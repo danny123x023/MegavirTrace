@@ -73,7 +73,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "since_season": "{season} only",
     },
     "es": {
-        "head_sig": "{Name} en {place} ha estado {updown} desde {start}: alrededor de {rate} {unit} por década.",
+        "head_sig": "{Subject} en {place} ha estado {updown} desde {start}: alrededor de {rate} {unit} por década.",
+        "head_sig_pl": "{Subject} en {place} han estado {updown} desde {start}: alrededor de {rate} {unit} por década.",
         "head_nosig": "{Name} en {place}: sin tendencia clara desde {start}.",
         "head_mixed": "{Name} en {place}: la evidencia es mixta.",
         "head_untestable": "{Name} en {place}: este registro no se puede evaluar con fiabilidad.",
@@ -210,9 +211,18 @@ def trend_verdict(
         "start": str(start),
         "end": str(end),
     }
-    common = {"Name": _cap(var.name), "place": place, "unit": unit, "period": period, "step": step, **shown}
+    loc = var.local(lang)
+    common = {
+        "Name": _cap(loc["name"]),
+        "Subject": loc.get("subject", _cap(loc["name"])),
+        "place": place,
+        "unit": unit,
+        "period": period,
+        "step": step,
+        **shown,
+    }
     up = st.sen.slope > 0
-    word = var.rising_words[0] if up else var.rising_words[1]
+    word = loc["rising_words"][0] if up else loc["rising_words"][1]
     updown = t["up"] if up else t["down"]
     sentences: list[str] = []
 
@@ -225,7 +235,8 @@ def trend_verdict(
             sentences.append(t["try_monthly"])
     elif st.significant:
         status = "significant"
-        headline = t["head_sig"].format(updown=updown, **common)
+        key = "head_sig_pl" if loc.get("plural") and "head_sig_pl" in t else "head_sig"
+        headline = t[key].format(updown=updown, **common)
         sentences.append(t["plain"].format(place=place, word=word))
         sentences.append(t["range"].format(**common))
         sentences.append(t["agree_sig"].format(**common))
@@ -295,7 +306,7 @@ def trend_verdict(
             )
         )
 
-    caveats = [t["cav_cause"], var.caveat]
+    caveats = [t["cav_cause"], loc["caveat"]]
     if st.seasonal_test:
         caveats.append(t["cav_seasonal"])
     if min_coverage is not None and min_coverage < 0.95:
@@ -359,13 +370,14 @@ def compare_verdict(
         "p": fmt_p(d["p"], lang),
         "mdd": fmt_num(d["min_detectable_per_decade"], lang=lang),
     }
-    common = {"Name": _cap(var.name), "a": name_a, "b": name_b, "unit": unit, **shown}
+    loc = var.local(lang)
+    common = {"Name": _cap(loc["name"]), "a": name_a, "b": name_b, "unit": unit, **shown}
     status = "significant" if d["significant"] else "not_significant"
     headline = t["cmp_head_sig" if d["significant"] else "cmp_head_nosig"].format(**common)
     sentences = [t["cmp_body"].format(**common), t["cmp_mdd"].format(**common)]
     if cmp.get("opposite"):
         sentences.append(t["cmp_opposite"])
-    caveats = [t["cav_cause"], var.caveat]
+    caveats = [t["cav_cause"], loc["caveat"]]
     dc = data_caveat(data_kind, lang)
     if dc:
         caveats.insert(0, dc)

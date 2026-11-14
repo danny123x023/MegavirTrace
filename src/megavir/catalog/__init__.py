@@ -48,9 +48,26 @@ class Variable:
     # "monthly" for gappy records (GRACE): whole years drop out of yearly values, months do not
     default_mode: str = "annual"
 
+    def local(self, lang: str = "en") -> dict:
+        """Name, definition, why, caveat and direction words in a language (English fallback)."""
+        base = {
+            "name": self.name,
+            "definition": self.definition,
+            "why_it_can_trend": self.why_it_can_trend,
+            "caveat": self.caveat,
+            "rising_words": tuple(self.rising_words),
+        }
+        if lang == "es":
+            from .i18n_es import ES
+
+            base.update({k: v for k, v in ES.get(self.id, {}).items()})
+        return base
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["rising_words"] = list(self.rising_words)
+        es = self.local("es")
+        d["i18n"] = {"es": {**es, "rising_words": list(es["rising_words"])}}
         return d
 
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { fmtP, fmtSigned } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 
 type Card = {
   analysis_id: string; kind: string;
@@ -31,6 +32,7 @@ const EXAMPLES = [
 ];
 
 export default function AskPage() {
+  const { lang, t } = useI18n();
   const [status, setStatus] = useState<{ enabled: boolean; provider: string; model: string | null } | null>(null);
   const [q, setQ] = useState("");
   const [tutor, setTutor] = useState(false);
@@ -48,7 +50,7 @@ export default function AskPage() {
     ]).slice(-6);
     let r: Reply;
     try {
-      r = await apiPost<Reply>("/ai/ask", { question, mode: tutor ? "tutor" : "explain", history });
+      r = await apiPost<Reply>("/ai/ask", { question, mode: tutor ? "tutor" : "explain", history, lang });
     } catch (e) {
       r = { mode: "error", reason: (e as Error).message };
     }
@@ -59,7 +61,7 @@ export default function AskPage() {
 
   return (
     <div>
-      <h1>Ask the AI scientist</h1>
+      <h1>{t("Ask the AI scientist")}</h1>
       <p className="lede">
         Ask in plain words. The AI turns your question into analyses run by MegavirTrace&apos;s engine, then explains them. It never computes:
         every number it writes is checked against the stored results, and if anything does not match you see the computed verdict instead.
@@ -81,7 +83,7 @@ export default function AskPage() {
             Tutor mode: guide me with questions instead of explaining
           </label>
           <button type="button" className="primary" disabled={busy || !status?.enabled || q.trim().length < 3} onClick={() => ask(q)}>
-            {busy ? "Running the analyses…" : "Ask"}
+            {busy ? t("Running the analyses…") : t("Ask")}
           </button>
         </div>
         <div className="chip-list" style={{ marginTop: 10 }}>

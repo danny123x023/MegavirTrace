@@ -1,3 +1,5 @@
+import { recall, remember, signalOffline } from "./offline";
+
 // Thin client for the MegavirTrace API (proxied at /api).  Every number shown comes from these
 // responses; the page never computes statistics itself.
 
@@ -16,6 +18,7 @@ export type Variable = {
   source_badge: string;
   year_units?: string | null;
   default_mode?: string;
+  i18n?: Record<string, Record<string, unknown>>;
   dataset_info: { product: string; title: string; archive: string; doi: string | null; paper_doi: string | null; citation: string; native_grid: string; record_start: string; cadence: string };
   data: null | { id: number; kind: "real" | "test" | "synthetic"; bbox: number[]; first_month: string; last_month: string; res_deg: number; validation?: Record<string, unknown> };
 };
@@ -97,9 +100,23 @@ export async function apiGet<T>(path: string, params?: Record<string, string | n
 }
 
 export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  return handle<T>(
-    await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal }),
-  );
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+  } catch (err) {
+    // no connection: fall back to the copy kept on this device, if any
+    if ((err as Error).name !== "AbortError") {
+      const saved = recall<T>(path, body);
+      if (saved) {
+        signalOffline();
+        return saved;
+      }
+    }
+    throw err;
+  }
+  const value = await handle<T>(response);
+  remember(path, body, value);
+  return value;
 }
 
 export const exportUrl = (id: string, format: string) => `/api/reports/${id}/export?format=${format}`;

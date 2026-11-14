@@ -3,6 +3,9 @@ import Script from "next/script";
 import "./globals.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Nav from "@/components/Nav";
+import OfflineSupport from "@/components/OfflineSupport";
+import SiteFooter, { SkipLink } from "@/components/SiteFooter";
+import { LangProvider } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: "MegavirTrace — is this place really changing?",
@@ -22,18 +25,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="mt-theme" strategy="beforeInteractive">
           {themeScript}
         </Script>
-        <a className="skip-link" href="#main">
-          Skip to content
-        </a>
-        <Nav />
-        <main id="main">{children}</main>
-        <footer className="site-footer">
-          <p>
-            MegavirTrace · NASA Space Apps Challenge 2026, &ldquo;Be An Earth System Trend Detective!&rdquo; · Team Space Pirates
-            Paradigm · Data: NASA (MODIS, OMI, AIRS, GPM IMERG, MERRA-2, GLDAS, GRACE/GRACE-FO, NASA-SSH, MiCASA, GISTEMP) ·
-            Open source, Apache 2.0. A trend is not a cause.
-          </p>
-        </footer>
+        <LangProvider>
+          <SkipLink />
+          <OfflineSupport />
+          <Nav />
+          <main id="main">{children}</main>
+          <SiteFooter />
+        </LangProvider>
       </body>
     </html>
   );

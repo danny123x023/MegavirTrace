@@ -7,6 +7,7 @@ import { DataFlag, Downloads } from "@/components/Result";
 import TrendChart from "@/components/TrendChart";
 import { apiGet, apiPost, type Catalog, type CompareResult } from "@/lib/api";
 import { fmt, fmtP, fmtSigned } from "@/lib/format";
+import { useI18n, varText } from "@/lib/i18n";
 
 type Opposites = {
   rising: { place: string; name: string; per_decade: number }[];
@@ -16,6 +17,7 @@ type Opposites = {
 };
 
 export default function ComparePage() {
+  const { lang, t } = useI18n();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [variable, setVariable] = useState("");
   const [a, setA] = useState<Chosen | null>(null);
@@ -49,12 +51,12 @@ export default function ComparePage() {
     setLoading(true);
     setError(null);
     try {
-      setResult(await apiPost<CompareResult>("/analysis/compare", { variable, region_a: a.region, region_b: b.region, mode }));
+      setResult(await apiPost<CompareResult>("/analysis/compare", { variable, region_a: a.region, region_b: b.region, mode, lang }));
     } catch (e) {
       setError((e as Error).message);
     }
     setLoading(false);
-  }, [variable, a, b, mode]);
+  }, [variable, a, b, mode, lang]);
 
   useEffect(() => { run(); }, [run]);
   useEffect(() => setOpp(null), [variable]);
@@ -64,7 +66,7 @@ export default function ComparePage() {
 
   return (
     <div>
-      <h1>Compare two places</h1>
+      <h1>{t("Compare two places")}</h1>
       <p className="lede">
         Are two regions really changing differently? The test runs on the year-by-year <em>difference</em> between them, so the ups
         and downs they share cancel out. Regions that move together are not under-tested, and regions that move apart are not over-tested.
@@ -94,14 +96,14 @@ export default function ComparePage() {
             <div className="stack">
               <section className="card verdict" aria-labelledby="cmp-h">
                 <DataFlag kind={result.data.kind} />
-                <span className="status-pill"><span aria-hidden="true">{d.significant ? "▲▼" : "○"}</span>{d.significant ? "The trends really differ" : "No clear difference"}</span>
+                <span className="status-pill"><span aria-hidden="true">{d.significant ? "▲▼" : "○"}</span>{d.significant ? t("The trends really differ") : t("No clear difference")}</span>
                 <h2 id="cmp-h">{result.verdict.headline}</h2>
                 {result.verdict.sentences.map((s, i) => <p key={i}>{s}</p>)}
                 <ul className="caveats">{result.verdict.caveats.map((s, i) => <li key={i}>{s}</li>)}</ul>
               </section>
               <section className="card" aria-label="Both regions">
                 <TrendChart
-                  title={`${result.variable.name}: ${result.region_a.name} and ${result.region_b.name}`}
+                  title={`${varText(result.variable, lang)}: ${result.region_a.name} — ${result.region_b.name}`}
                   labels={c.labels}
                   t={c.t}
                   units={result.units}
@@ -124,16 +126,16 @@ export default function ComparePage() {
             </div>
             <div className="stack">
               <section className="card" aria-label="Map of both regions">
-                <h2>The two regions</h2>
+                <h2>{t("The two regions")}</h2>
                 <EarthMap outlines={[{ geometry: result.region_a.geometry, bbox: result.region_a.bbox }, { geometry: result.region_b.geometry, bbox: result.region_b.bbox }]} height={320} />
               </section>
               <div className="tiles">
-                <div className="tile"><div className="label">Difference in trend</div><div className="value">{fmtSigned(d.slope_per_decade)} {result.units}</div><div className="sub">per decade · 95% range {fmtSigned(d.ci_low_per_decade)} to {fmtSigned(d.ci_high_per_decade)}</div></div>
-                <div className="tile"><div className="label">Test on the difference</div><div className="value">p {fmtP(d.p).startsWith("<") ? fmtP(d.p) : "= " + fmtP(d.p)}</div><div className="sub">both tests must agree</div></div>
-                <div className="tile"><div className="label">Smallest detectable</div><div className="value">{fmt(d.min_detectable_per_decade)} {result.units}</div><div className="sub">per decade, with this record</div></div>
-                <div className="tile"><div className="label">How much they move together</div><div className="value">r = {fmt(c.correlation, 2)}</div><div className="sub">shared ups and downs cancel in the difference</div></div>
-                <div className="tile"><div className="label">Trend in A</div><div className="value">{fmtSigned(c.stats_a.per_decade?.sen ?? c.stats_a.sen.slope * 10)} {result.units}</div><div className="sub">per decade · {c.stats_a.significant ? "significant" : "not significant"}</div></div>
-                <div className="tile"><div className="label">Trend in B</div><div className="value">{fmtSigned(c.stats_b.per_decade?.sen ?? c.stats_b.sen.slope * 10)} {result.units}</div><div className="sub">per decade · {c.stats_b.significant ? "significant" : "not significant"}</div></div>
+                <div className="tile"><div className="label">{t("Difference in trend")}</div><div className="value">{fmtSigned(d.slope_per_decade)} {result.units}</div><div className="sub">per decade · 95% range {fmtSigned(d.ci_low_per_decade)} to {fmtSigned(d.ci_high_per_decade)}</div></div>
+                <div className="tile"><div className="label">{t("Test on the difference")}</div><div className="value">p {fmtP(d.p).startsWith("<") ? fmtP(d.p) : "= " + fmtP(d.p)}</div><div className="sub">{t("both tests must agree")}</div></div>
+                <div className="tile"><div className="label">{t("Smallest detectable")}</div><div className="value">{fmt(d.min_detectable_per_decade)} {result.units}</div><div className="sub">{t("per decade, with this record")}</div></div>
+                <div className="tile"><div className="label">{t("How much they move together")}</div><div className="value">r = {fmt(c.correlation, 2)}</div><div className="sub">{t("shared ups and downs cancel in the difference")}</div></div>
+                <div className="tile"><div className="label">{t("Trend in A")}</div><div className="value">{fmtSigned(c.stats_a.per_decade?.sen ?? c.stats_a.sen.slope * 10)} {result.units}</div><div className="sub">per decade · {c.stats_a.significant ? "significant" : "not significant"}</div></div>
+                <div className="tile"><div className="label">{t("Trend in B")}</div><div className="value">{fmtSigned(c.stats_b.per_decade?.sen ?? c.stats_b.sen.slope * 10)} {result.units}</div><div className="sub">per decade · {c.stats_b.significant ? "significant" : "not significant"}</div></div>
               </div>
               <Downloads id={result.id} />
             </div>
@@ -142,7 +144,7 @@ export default function ComparePage() {
       )}
 
       <section className="card" style={{ marginTop: 20 }} aria-labelledby="opp-h">
-        <h2 id="opp-h">Find regions with opposite trends</h2>
+        <h2 id="opp-h">{t("Find regions with opposite trends")}</h2>
         <p className="muted small">
           Scans the preset regions for robust, significant trends in {varInfo?.name.toLowerCase() ?? "this variable"} that point in opposite
           directions, then tests each pair&apos;s difference directly. The first scan of a variable can take a minute; results are stored.
@@ -151,7 +153,7 @@ export default function ComparePage() {
           setOppLoading(true);
           try { setOpp(await apiGet<Opposites>("/analysis/opposites", { variable })); } catch (e) { setError((e as Error).message); }
           setOppLoading(false);
-        }}>{oppLoading ? "Scanning presets…" : "Find opposite trends"}</button>
+        }}>{oppLoading ? t("Scanning presets…") : t("Find opposite trends")}</button>
         {opp && (
           <div style={{ marginTop: 12 }}>
             {opp.pairs.length === 0 && <p>No pair of preset regions has robust, significant trends in opposite directions for this variable.</p>}
