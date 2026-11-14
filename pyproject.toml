@@ -1,0 +1,69 @@
+[project]
+name = "megavirtrace"
+version = "0.1.0"
+description = "MegavirTrace: honest, checkable Earth-system trends from NASA data (NASA Space Apps Challenge 2026)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+authors = [{ name = "Space Pirates Paradigm" }]
+dependencies = [
+    "numpy>=2.1",
+    "scipy>=1.14",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "psycopg[binary,pool]>=3.2",
+    "shapely>=2.0",
+    "httpx>=0.27",
+    "openpyxl>=3.1",
+    "reportlab>=4.2",
+    "nbformat>=5.10",
+    "anthropic>=0.70",
+    "babel>=2.16",
+]
+
+[project.optional-dependencies]
+ingest = [
+    "xarray>=2024.10",
+    "h5netcdf>=1.4",
+    "h5py>=3.12",
+    "netCDF4>=1.7",
+    "earthaccess>=0.11",
+    "matplotlib>=3.9",
+    "pyshp>=2.3",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-xdist>=3.6",
+    "pymannkendall>=1.4",
+    "ruff>=0.7",
+    "pip-audit>=2.7",
+    "pypdfium2>=4.30",
+]
+
+[project.scripts]
+megavir-ingest = "megavir.ingest.cli:main"
+megavir-api = "megavir.api.main:run"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/megavir"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "montecarlo: slow Monte Carlo false-alarm checks",
+    "db: needs a running PostgreSQL (MEGAVIR_DATABASE_URL)",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "E741"]  # I, J are matrix-style row and column indices

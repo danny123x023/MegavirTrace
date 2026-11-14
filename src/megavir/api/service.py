@@ -1,0 +1,674 @@
+"""The analysis service: region + variable -> series, statistics, verdict, cell map.
+
+Used by the HTTP API, the AI tools and the exports, so every number has one source.
+Results are stored under a fingerprint of (request, data versions, engine version) and
+reused: statistics are computed once per data version.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import re
+import time
+from dataclasses import dataclass
+
+import numpy as np
+
+from megavir.catalog import DATASETS, VARIABLES, get_variable, series_units
+from megavir.engine.aggregate import (
+    MIN_COVERAGE,
+    build_series,
+    month_label,
+    month_zscore,
+    per_cell_monthly_anomalies,
+    per_cell_values,
+    region_mean,
+)
+from megavir.engine.cellmap import cell_trends
+from megavir.engine.compare import compare_series
+from megavir.engine.stats import NotEnoughData, analyse_trend
+from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
+from megavir.places.geometry import apply_domain, cells_for
+from megavir.store import GridSpec, Version, active_versions, read_cells, read_mask
+
+ENGINE_VERSION = "2026.11-4"
+MAX_MAP_CELLS = 40_000
+
+
+class AnalysisError(ValueError):
+    """A problem the visitor can fix (no data for this place, bad request, ...)."""
+
+
+# --------------------------------------------------------------------------------------
+# Places
+# --------------------------------------------------------------------------------------
+
+
+@dataclass
+class Region:
+    id: str | None
+    name: str
+    kind: str  # country | admin1 | city | preset | box
+    bbox: list[float]
+    geometry: dict | None
+    context: str = ""
+
+    def descriptor(self) -> dict:
+        return {"id": self.id, "bbox": self.bbox, "geometry": self.geometry}
+
+    def public(self, with_geometry: bool = True) -> dict:
+        d = {"id": self.id, "name": self.name, "kind": self.kind, "bbox": self.bbox, "context": self.context}
+        if with_geometry:
+            d["geometry"] = self.geometry
+        return d
+
+
+def _box_name(b: list[float]) -> str:
+    def ll(v, pos, neg):
+        return f"{abs(v):g}°{pos if v >= 0 else neg}"
+
+    return f"box {ll(b[1], 'N', 'S')}–{ll(b[3], 'N', 'S')}, {ll(b[0], 'E', 'W')}–{ll(b[2], 'E', 'W')}"
+
+
+_THE_COUNTRY = re.compile(
+    r"^(United |Republic|Dem\. |Democratic|Central African|Dominican Rep|Netherlands|Philippines|Bahamas|Gambia|Maldives|"
+    r"Seychelles|Comoros|Solomon|Marshall|Cayman|Falkland|Faroe|Turks|British|U\.S\.|Vatican|Czech|Cook Is|N\. Mariana|"
+    r"Northern Mariana|Virgin|Congo|Ivory Coast|Isle of Man|Gaza|West Bank)"
+)
+_THE_PRESET = re.compile(
+    r"(Basin|Sea\b|Ocean|Gulf|Bay\b|Current|Plateau|Plain|Desert|Delta|Valley|Lakes|Tropics|Arctic|Sahel|Sahara|Himalaya|Alps|"
+    r"Andes|Outback|Pampas|Cerrado|Pantanal|Mediterranean|Maghreb|Horn of|corridor|Steppe|steppe|Coast\b|coast|belt|Belt|region|"
+    r"hole|Mojave|Highveld|Kalahari|Gobi|Atacama|monsoon|Niño|warm pool|Great Barrier|Coral Triangle|Bight|Prairies|"
+    r"Ruhr|Peninsula|Archipelago|North Slope|Slope|savanna|forests|farmland|aquifer|icefields|glaciers|waters|lands|"
+    r"Indo-Gangetic|Ganges|Loess|Northwest|Persian|Philippines|Maldives|Tuvalu|metropolitan|Corn Belt|Upwelling|upwelling)"
+)
+
+
+def in_phrase(name: str, kind: str) -> str:
+    """How a place reads after "in": "the whole Earth", "the Amazon Basin", "the United States"."""
+    if kind == "city":
+        return f"the area around {name}"
+    special = {
+        "Whole Earth": "the whole Earth",
+        "West Antarctica (Amundsen Sea sector)": "West Antarctica (Amundsen Sea sector)",
+        "Northwest India (Punjab–Haryana–Rajasthan)": "northwest India (Punjab–Haryana–Rajasthan)",
+        "Amazon 'arc of deforestation'": "the Amazon 'arc of deforestation'",
+        "Tuvalu and Kiribati waters": "the waters of Tuvalu and Kiribati",
+        "Maldives waters": "the waters of the Maldives",
+    }
+    if name in special:
+        return special[name]
+    if kind == "country" and _THE_COUNTRY.match(name):
+        return "the " + name
+    if (
+        kind == "preset"
+        and _THE_PRESET.search(name)
+        and not name.startswith(("Lake ", "Greater ", "Western Europe", "Eastern Europe"))
+    ):
+        return "the " + name
+    return name
+
+
+def resolve_region(conn, spec: dict) -> Region:
+    """spec: {"place": id} or {"bbox": [w, s, e, n], "name"?: str}."""
+    if spec.get("place"):
+        r = conn.execute(
+            "SELECT id, name, kind, context, bbox, geometry FROM place WHERE id = %s", (spec["place"],)
+        ).fetchone()
+        if not r:
+            raise AnalysisError(f"unknown place {spec['place']!r}")
+        name = in_phrase(r["name"], r["kind"])
+        return Region(r["id"], name, r["kind"], list(r["bbox"]), r["geometry"], r["context"])
+    b = spec.get("bbox")
+    if not b or len(b) != 4:
+        raise AnalysisError("a region needs a place id or a bbox [west, south, east, north]")
+    w, s, e, n = (float(x) for x in b)
+    if not (-180 <= w <= 180 and -180 <= e <= 180 and -90 <= s < n <= 90):
+        raise AnalysisError("bbox must be [west, south, east, north] in degrees, south < north")
+    bb = [round(w, 4), round(s, 4), round(e, 4), round(n, 4)]
+    name = (spec.get("name") or "").strip()[:80] or _box_name(bb)
+    return Region(None, name, "box", bb, None)
+
+
+# --------------------------------------------------------------------------------------
+# Regional monthly series
+# --------------------------------------------------------------------------------------
+
+
+@dataclass
+class RegionalData:
+    version: Version
+    months: np.ndarray
+    values: np.ndarray
+    coverage: np.ndarray
+    cells: object
+    weights: np.ndarray
+    cube: np.ndarray  # (n_months, n_cells) for the cell map
+
+
+def regional_monthly(conn, var_id: str, region: Region, need_cells: bool = False) -> RegionalData:
+    var = get_variable(var_id)
+    versions = active_versions(conn)
+    v = versions.get(var_id)
+    if not v:
+        raise AnalysisError(f"{var.name} is not loaded yet")
+    rc = cells_for(region.descriptor(), v.spec)
+    if rc.size == 0:
+        raise AnalysisError(_outside_message(var, v))
+    land = None
+    if var.domain != "all":
+        got = read_mask(conn, "land", v.spec.res)
+        if got:
+            g, lf = got
+            land = (lf, v.spec.offset_in(g))
+    weights = apply_domain(rc, var.domain, land[0] if land else None, land[1] if land else (0, 0))
+    keep = weights > 0
+    if not keep.any():
+        where = "land" if var.domain == "land" else "sea"
+        raise AnalysisError(
+            f"{region.name} has no {where} cells, and {var.name.lower()} is measured only over {where}."
+        )
+    ii, jj, w = rc.ii[keep], rc.jj[keep], weights[keep]
+    cube = read_cells(conn, v, ii, jj)
+    if not np.isfinite(cube).any():
+        raise AnalysisError(_outside_message(var, v))
+    mean, cov = region_mean(cube, w)
+    sub = type(rc)(ii, jj, rc.frac[keep], w, rc.lat[keep], rc.lon[keep])
+    return RegionalData(v, v.months, mean, cov, sub, w, cube if need_cells else np.empty((0, 0)))
+
+
+def _outside_message(var, v: Version) -> str:
+    if v.kind in ("test", "synthetic"):
+        b = v.to_public()["bbox"]
+        return (
+            f"{var.name} is loaded only as {v.kind} data for a small area "
+            f"({b[1]:.1f}–{b[3]:.1f}°, {b[0]:.1f}–{b[2]:.1f}°). Choose a place inside it."
+        )
+    return f"There is no {var.name.lower()} data for this region."
+
+
+# --------------------------------------------------------------------------------------
+# Fingerprints and the result cache
+# --------------------------------------------------------------------------------------
+
+
+def fingerprint(kind: str, request: dict, version_ids: list[int]) -> str:
+    blob = json.dumps({"k": kind, "r": request, "v": version_ids, "e": ENGINE_VERSION}, sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()[:32]
+
+
+def cached(conn, fid: str) -> dict | None:
+    r = conn.execute("SELECT result FROM analysis WHERE id = %s", (fid,)).fetchone()
+    return r["result"] if r else None
+
+
+def store(conn, fid: str, kind: str, request: dict, version_ids: list[int], result: dict) -> None:
+    conn.execute(
+        "INSERT INTO analysis (id, kind, request, versions, result) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
+        (fid, kind, json.dumps(request), version_ids, json.dumps(result, allow_nan=False)),
+    )
+    conn.commit()
+
+
+def get_report(conn, fid: str) -> dict | None:
+    r = conn.execute(
+        "SELECT kind, request, result, created_at FROM analysis WHERE id = %s", (fid,)
+    ).fetchone()
+    return dict(r) if r else None
+
+
+def _nan_to_none(a) -> list:
+    return [None if (x is None or not math.isfinite(float(x))) else float(x) for x in np.asarray(a, float)]
+
+
+# --------------------------------------------------------------------------------------
+# Trend for one region
+# --------------------------------------------------------------------------------------
+
+
+def normalise_request(req: dict) -> dict:
+    var = req.get("variable")
+    if var not in VARIABLES:
+        raise AnalysisError(f"unknown variable {var!r}")
+    mode = req.get("mode") or VARIABLES[var].default_mode
+    if mode not in ("annual", "season", "monthly", "raw"):
+        raise AnalysisError("mode must be annual, season, monthly or raw")
+    season = req.get("season") if mode == "season" else None
+    if mode == "season" and season not in ("DJF", "MAM", "JJA", "SON"):
+        raise AnalysisError("season must be DJF, MAM, JJA or SON")
+    lang = req.get("lang") or "en"
+    if lang not in LANGUAGES:
+        lang = "en"
+    region = req.get("region") or {}
+    region = (
+        {"place": region["place"]}
+        if region.get("place")
+        else {
+            "bbox": [round(float(x), 4) for x in (region.get("bbox") or [])],
+            "name": (region.get("name") or "")[:80],
+        }
+    )
+    sy, ey = req.get("start_year"), req.get("end_year")
+    return {
+        "variable": var,
+        "region": region,
+        "mode": mode,
+        "season": season,
+        "start_year": int(sy) if sy else None,
+        "end_year": int(ey) if ey else None,
+        "cell_map": bool(req.get("cell_map", True)),
+        "lang": lang,
+    }
+
+
+def provenance(var_id: str, v: Version, fid: str) -> dict:
+    var = VARIABLES[var_id]
+    ds = DATASETS[var.dataset]
+    return {
+        "product": ds.product,
+        "title": ds.title,
+        "archive": ds.archive,
+        "doi": ds.doi,
+        "paper_doi": ds.paper_doi,
+        "citation": ds.citation,
+        "source_badge": var.source_badge,
+        "grid": f"{v.spec.res:g}°",
+        "data_version": v.id,
+        "data_kind": v.kind,
+        "data_created": str(v.created_at),
+        "engine_version": ENGINE_VERSION,
+        "fingerprint": fid,
+    }
+
+
+def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
+    req = normalise_request(raw_request)
+    versions = active_versions(conn)
+    v = versions.get(req["variable"])
+    if not v:
+        raise AnalysisError(f"{VARIABLES[req['variable']].name} is not loaded yet")
+    fid = fingerprint("trend", req, [v.id])
+    if use_cache and (hit := cached(conn, fid)):
+        return hit
+    t0 = time.time()
+    var = VARIABLES[req["variable"]]
+    region = resolve_region(conn, req["region"])
+    rd = regional_monthly(conn, req["variable"], region, need_cells=req["cell_map"])
+    s = build_series(
+        rd.months,
+        rd.values,
+        req["mode"],
+        req["season"],
+        req["start_year"],
+        req["end_year"],
+        var.agg,
+        rd.coverage,
+    )
+    unit = series_units(var, req["mode"])
+    try:
+        st = analyse_trend(s.t, s.y, s.years, s.labels, s.per_year, s.group)
+    except NotEnoughData as e:
+        hint = "Try a longer period." if req["mode"] == "annual" else "Try a longer period or yearly values."
+        raise AnalysisError(f"Not enough data for {var.name.lower()} in {region.name}: {e}. {hint}") from None
+    # lowest coverage among the months that actually entered the statistics
+    used = (
+        np.isin(rd.months, _months_used(rd.months, s))
+        & np.isfinite(rd.values)
+        & (rd.coverage >= MIN_COVERAGE)
+    )
+    min_cov = float(np.nanmin(rd.coverage[used])) if used.any() else None
+    verdict = trend_verdict(st, var, region.name, unit, s.season, req["lang"], v.kind, min_cov)
+    stats = st.to_dict()
+    stats["per_decade"] = {
+        "sen": st.sen.slope * 10,
+        "sen_low": st.sen.ci_low * 10,
+        "sen_high": st.sen.ci_high * 10,
+        "ols": st.ols.slope * 10,
+        "ols_low": st.ols.ci_low * 10,
+        "ols_high": st.ols.ci_high * 10,
+    }
+    stats = _jsonable(stats)
+    result = {
+        "id": fid,
+        "kind": "trend",
+        "request": req,
+        "variable": var.to_dict(),
+        "region": region.public(),
+        "units": unit,
+        "series": {
+            "mode": s.mode,
+            "season": s.season,
+            "labels": s.labels,
+            "t": _nan_to_none(s.t),
+            "values": _nan_to_none(s.y),
+            "plot_values": _nan_to_none(s.plot_y),
+            "trend_line": _nan_to_none(st.sen.intercept + st.sen.slope * s.t),
+            "per_year": s.per_year,
+        },
+        "monthly": {
+            "labels": [month_label(int(m)) for m in rd.months],
+            "values": _nan_to_none(rd.values),
+            "coverage": _nan_to_none(rd.coverage),
+            "units": var.units,
+        },
+        "stats": stats,
+        "verdict": verdict,
+        "cell_map": _cell_map(rd, req, var) if req["cell_map"] else None,
+        "data": v.to_public(),
+        "provenance": provenance(req["variable"], v, fid),
+        "compute_ms": None,
+    }
+    result["compute_ms"] = round((time.time() - t0) * 1000)
+    store(conn, fid, "trend", req, [v.id], result)
+    return result
+
+
+def _months_used(months: np.ndarray, s) -> np.ndarray:
+    years = np.unique(s.years)
+    return months[np.isin(months // 12, years)]
+
+
+def _jsonable(obj):
+    if isinstance(obj, dict):
+        return {k: _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, list | tuple):
+        return [_jsonable(v) for v in obj]
+    if isinstance(obj, float):
+        if math.isnan(obj):
+            return None
+        if math.isinf(obj):
+            return "inf" if obj > 0 else "-inf"
+    if isinstance(obj, np.generic):
+        return _jsonable(obj.item())
+    return obj
+
+
+def _cell_map(rd: RegionalData, req: dict, var) -> dict | None:
+    n_cells = rd.cube.shape[1]
+    if n_cells > MAX_MAP_CELLS:
+        return {"skipped": f"region too large for a cell map ({n_cells} cells)"}
+    if n_cells < 2:
+        return {"skipped": "the region covers a single grid cell"}
+    if req["mode"] in ("monthly", "raw"):
+        t, vals, grp = per_cell_monthly_anomalies(rd.months, rd.cube, req["start_year"], req["end_year"])
+        if np.unique(t.astype(int)).size < 8:
+            return {"skipped": "not enough years for a cell map"}
+        res = cell_trends(t, vals, group=grp)
+        basis = "monthly anomalies (seasonal test)"
+    else:
+        mode = "season" if req["mode"] == "season" else "annual"
+        t, vals = per_cell_values(rd.months, rd.cube, mode, req["season"], req["start_year"], req["end_year"])
+        if t.size < 8:
+            return {"skipped": "not enough years for a cell map"}
+        factor = 1.0
+        if var.agg == "sum":
+            factor = 12.0 if mode == "annual" else 3.0
+        res = cell_trends(t, vals * factor)
+        basis = "yearly values" if mode == "annual" else f"{req['season']} values"
+    return {
+        "res": rd.version.spec.res,
+        "lat": _nan_to_none(rd.cells.lat),
+        "lon": _nan_to_none(rd.cells.lon),
+        "frac": _nan_to_none(rd.cells.frac),
+        "slope_per_decade": _nan_to_none(res["slope"] * 10),
+        "p": _nan_to_none(res["p"]),
+        "q": _nan_to_none(res["q"]),
+        "passes": [bool(x) for x in res["passes"]],
+        "alpha_fdr": res["alpha_fdr"],
+        "n_cells": int(n_cells),
+        "n_pass": int(np.sum(res["passes"])),
+        "n_raw_significant": int(np.sum(res["raw_significant"])),
+        "basis": basis,
+        "caveat": "Which cells pass depends on the region tested: the false-discovery control runs over this region's cells.",
+    }
+
+
+# --------------------------------------------------------------------------------------
+# Compare two regions
+# --------------------------------------------------------------------------------------
+
+
+def run_compare(conn, raw: dict, use_cache: bool = True) -> dict:
+    base = normalise_request({**raw, "region": raw.get("region_a"), "cell_map": False})
+    rb = normalise_request({**raw, "region": raw.get("region_b"), "cell_map": False})["region"]
+    req = {**base, "region_a": base.pop("region"), "region_b": rb}
+    req.pop("cell_map", None)
+    if req["mode"] == "raw":
+        req["mode"] = "monthly"
+    v = active_versions(conn).get(req["variable"])
+    if not v:
+        raise AnalysisError("variable not loaded")
+    fid = fingerprint("compare", req, [v.id])
+    if use_cache and (hit := cached(conn, fid)):
+        return hit
+    var = VARIABLES[req["variable"]]
+    A = resolve_region(conn, req["region_a"])
+    B = resolve_region(conn, req["region_b"])
+    da = regional_monthly(conn, req["variable"], A)
+    db = regional_monthly(conn, req["variable"], B)
+    args = (req["mode"], req["season"], req["start_year"], req["end_year"], var.agg)
+    sa = build_series(da.months, da.values, *args, coverage=da.coverage)
+    sb = build_series(db.months, db.values, *args, coverage=db.coverage)
+    unit = series_units(var, req["mode"])
+    try:
+        cmp = compare_series(sa, sb)
+    except NotEnoughData as e:
+        raise AnalysisError(f"Not enough overlapping data: {e}") from None
+    verdict = compare_verdict(cmp, var, A.name, B.name, unit, req["lang"], v.kind)
+    result = _jsonable(
+        {
+            "id": fid,
+            "kind": "compare",
+            "request": req,
+            "variable": var.to_dict(),
+            "region_a": A.public(),
+            "region_b": B.public(),
+            "units": unit,
+            "comparison": cmp,
+            "verdict": verdict,
+            "data": v.to_public(),
+            "provenance": provenance(req["variable"], v, fid),
+        }
+    )
+    store(conn, fid, "compare", req, [v.id], result)
+    return result
+
+
+# --------------------------------------------------------------------------------------
+# What is changing here? (all variables for one place, FDR across variables)
+# --------------------------------------------------------------------------------------
+
+
+def run_scan(conn, raw: dict) -> dict:
+    from megavir.engine.cellmap import benjamini_hochberg
+
+    region_spec = raw.get("region") or {}
+    lang = raw.get("lang") or "en"
+    versions = active_versions(conn)
+    rows = []
+    for var_id in VARIABLES:
+        if var_id not in versions:
+            continue
+        try:
+            r = run_trend(
+                conn,
+                {
+                    "variable": var_id,
+                    "region": region_spec,
+                    "mode": VARIABLES[var_id].default_mode,
+                    "cell_map": False,
+                    "lang": lang,
+                },
+            )
+        except AnalysisError as e:
+            rows.append({"variable": var_id, "name": VARIABLES[var_id].name, "error": str(e)})
+            continue
+        st = r["stats"]
+        p_joint = max(st["mk"]["p"], st["ols"]["p"]) if st["agree"] and st["ols"]["testable"] else 1.0
+        rows.append(
+            {
+                "variable": var_id,
+                "name": VARIABLES[var_id].name,
+                "theme": VARIABLES[var_id].theme,
+                "analysis_id": r["id"],
+                "per_decade": st["per_decade"]["sen"],
+                "units": r["units"],
+                "direction": st["direction"],
+                "significant": st["significant"],
+                "p_joint": p_joint,
+                "effect": st["effect_label"],
+                "headline": r["verdict"]["headline"],
+                "data_kind": r["data"]["kind"],
+            }
+        )
+    ok = [r for r in rows if "p_joint" in r]
+    q = benjamini_hochberg(np.array([r["p_joint"] for r in ok])) if ok else []
+    for r, qq in zip(ok, q, strict=True):
+        r["q"] = float(qq)
+        r["passes_fdr"] = bool(r["significant"] and qq <= 0.05)
+    ok.sort(key=lambda r: (not r["passes_fdr"], r["q"]))
+    region = resolve_region(
+        conn, {"place": region_spec["place"]} if region_spec.get("place") else region_spec
+    )
+    return {
+        "region": region.public(with_geometry=False),
+        "results": ok + [r for r in rows if "error" in r],
+        "note": "Benjamini–Hochberg control across the variables tested here (q ≤ 0.05), so testing many "
+        "variables does not manufacture discoveries.",
+    }
+
+
+# --------------------------------------------------------------------------------------
+# Regions with opposite trends
+# --------------------------------------------------------------------------------------
+
+
+def run_opposites(conn, var_id: str, mode: str = "annual", max_pairs: int = 5, lang: str = "en") -> dict:
+    from megavir.places.presets import PRESETS
+
+    if var_id not in VARIABLES:
+        raise AnalysisError("unknown variable")
+    rising, falling = [], []
+    for p in PRESETS:
+        if p["id"] in ("globe",):
+            continue
+        try:
+            r = run_trend(
+                conn,
+                {
+                    "variable": var_id,
+                    "region": {"place": f"preset:{p['id']}"},
+                    "mode": mode,
+                    "cell_map": False,
+                    "lang": lang,
+                },
+            )
+        except AnalysisError:
+            continue
+        st = r["stats"]
+        if not st["significant"] or st["robustness"]["fragile"]:
+            continue
+        item = {
+            "place": f"preset:{p['id']}",
+            "name": p["name"],
+            "per_decade": st["per_decade"]["sen"],
+            "analysis_id": r["id"],
+        }
+        (rising if st["direction"] == "rising" else falling).append(item)
+    rising.sort(key=lambda x: -x["per_decade"])
+    falling.sort(key=lambda x: x["per_decade"])
+    pairs = []
+    for a in rising[:max_pairs]:
+        for b in falling[:max_pairs]:
+            if len(pairs) >= max_pairs:
+                break
+            try:
+                c = run_compare(
+                    conn,
+                    {
+                        "variable": var_id,
+                        "region_a": {"place": a["place"]},
+                        "region_b": {"place": b["place"]},
+                        "mode": mode,
+                        "lang": lang,
+                    },
+                )
+            except AnalysisError:
+                continue
+            if c["comparison"]["difference"]["significant"]:
+                pairs.append(
+                    {
+                        "a": a,
+                        "b": b,
+                        "compare_id": c["id"],
+                        "headline": c["verdict"]["headline"],
+                        "difference_per_decade": c["comparison"]["difference"]["slope_per_decade"],
+                    }
+                )
+    return {
+        "variable": var_id,
+        "rising": rising,
+        "falling": falling,
+        "pairs": pairs,
+        "note": "Only robust, significant trends among the preset regions are listed; each pair's difference is tested directly.",
+    }
+
+
+def month_detail(conn, var_id: str, region_spec: dict, year: int, month: int) -> dict:
+    region = resolve_region(conn, region_spec)
+    rd = regional_monthly(conn, var_id, region)
+    z = month_zscore(rd.months, rd.values, year, month)
+    if z is None:
+        raise AnalysisError("no data for that month")
+    return {
+        "region": region.public(with_geometry=False),
+        "variable": var_id,
+        **z,
+        "note": "Exploratory: how unusual one month was compared with the same month in other years.",
+    }
+
+
+def catalog_with_status(conn) -> dict:
+    from megavir.catalog import PLANNED_DATASETS, PLANNED_VARIABLES, THEMES
+
+    versions = active_versions(conn)
+    out = []
+    for vid, var in VARIABLES.items():
+        d = var.to_dict()
+        ds = DATASETS[var.dataset]
+        d["dataset_info"] = {
+            k: getattr(ds, k)
+            for k in (
+                "product",
+                "title",
+                "archive",
+                "doi",
+                "paper_doi",
+                "citation",
+                "native_grid",
+                "record_start",
+                "cadence",
+            )
+        }
+        v = versions.get(vid)
+        d["data"] = v.to_public() if v else None
+        out.append(d)
+    return {
+        "themes": THEMES,
+        "variables": out,
+        "planned": [
+            {
+                **p,
+                "dataset_info": {
+                    k: getattr(PLANNED_DATASETS[p["dataset"]], k) for k in ("product", "title", "doi")
+                },
+            }
+            for p in PLANNED_VARIABLES
+        ],
+    }
+
+
+def grid_spec_of(v: Version) -> GridSpec:
+    return v.spec

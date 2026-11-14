@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.8"
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  python:
+    name: Engine, Monte Carlo and AI checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "uv==${UV_VERSION}"
+      - name: Install from the lock file only
+        run: uv sync --locked --extra ingest --extra dev
+      - run: uv run ruff check src tests scripts
+      - run: uv run ruff format --check src tests scripts
+      - name: Tests (statistics vs reference libraries, Monte Carlo false alarms, AI number check)
+        run: uv run pytest -m "not db" -n auto
+
+  api:
+    name: Every endpoint on a synthetic store (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: megavir
+          POSTGRES_PASSWORD: megavir
+          POSTGRES_DB: megavir_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U megavir" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      MEGAVIR_TEST_DATABASE_URL: postgresql://megavir:megavir@localhost:5433/megavir_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked --extra ingest --extra dev
+      - run: uv run pytest -m db
+
+  web:
+    name: Web app (types and build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  browser:
+    name: Browser flows and axe-core accessibility gate (light and dark)
+    runs-on: ubuntu-latest
+    needs: [python, web]
+    services:
+      db:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: megavir
+          POSTGRES_PASSWORD: megavir
+          POSTGRES_DB: megavir
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U megavir" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: pip install "uv==${UV_VERSION}"
+      - run: uv sync --locked --extra ingest --extra dev
+      - uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: public-sources-v1
+      - name: Load public data (places, land mask, GISTEMP)
+        run: |
+          uv run python -I -m megavir.ingest.cli init-db
+          uv run python -I -m megavir.ingest.cli places --download
+          uv run python -I -m megavir.ingest.cli masks
+          uv run python -I -m megavir.ingest.cli full gistemp
+          uv run python -I -m megavir.ingest.cli precompute temp_change
+      - name: Start the API
+        run: |
+          nohup uv run uvicorn megavir.api.main:app --host 127.0.0.1 --port 8000 > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && break; sleep 2; done
+      - name: Build and start the web app
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run build
+          nohup npm run start > ../web.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/ > /dev/null && break; sleep 2; done
+      - name: Playwright flows and axe gate
+        working-directory: web
+        run: npx playwright test
+      - if: failure()
+        run: tail -100 api.log web.log
+
+  supply-chain:
+    name: Secret scan and dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan (gitleaks)
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0 detect --source /repo --no-banner --redact -v
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "uv==${UV_VERSION}"
+      - name: Python dependency audit
+        run: |
+          uv export --locked --all-extras --no-hashes --no-emit-project > requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --strict
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm dependency audit
+        working-directory: web
+        run: npm audit --audit-level=high

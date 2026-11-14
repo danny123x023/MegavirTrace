@@ -1,0 +1,15 @@
+[Unit]
+Description=MegavirTrace web app (Next.js)
+After=network.target megavir-api.service
+
+[Service]
+User=megavir
+WorkingDirectory=/opt/megavirtrace/web
+Environment=NODE_ENV=production
+Environment=MEGAVIR_BACKEND_URL=http://127.0.0.1:8000
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

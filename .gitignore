@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Data: raw downloads, quick-look maps and reports stay out of git
+/data/*
+!/data/.gitkeep
+
+# Local runtime
+.run/
+.env
+
+# Web (see web/.gitignore)
+web/node_modules/
+web/.next/
+web/public/maplibre-gl-worker.mjs
+web/test-results/
+web/playwright-report/
