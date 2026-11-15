@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, exportUrl, type Provenance, type Stats, type Verdict } from "@/lib/api";
 import { fmt, fmtP, fmtSigned } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import Panel from "@/components/Panel";
+import Panel, { FullscreenButton } from "@/components/Panel";
 
 const STATUS: Record<string, { icon: string; label: string }> = {
   significant: { icon: "▲▼", label: "Significant trend: both tests agree" },
@@ -147,11 +147,15 @@ export function ExplainWithAI({ id }: { id: string }) {
     <Panel aria-label="AI explanation">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <strong>{t("Ask the AI scientist to explain this result")}</strong>
-        <button type="button" disabled={busy} onClick={async () => {
-          setBusy(true);
-          try { setReply(await apiPost<AiReply>("/ai/explain", { analysis_id: id, lang })); } catch (e) { setReply({ mode: "error", reason: String(e) }); }
-          setBusy(false);
-        }}>{busy ? t("Thinking…") : t("Explain")}</button>
+        {/* the full-screen switch sits in this row, so the card shows none in its corner over the button */}
+        <span className="row" style={{ gap: 8 }}>
+          <button type="button" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try { setReply(await apiPost<AiReply>("/ai/explain", { analysis_id: id, lang })); } catch (e) { setReply({ mode: "error", reason: String(e) }); }
+            setBusy(false);
+          }}>{busy ? t("Thinking…") : t("Explain")}</button>
+          <FullscreenButton />
+        </span>
       </div>
       {reply?.mode === "answered" && reply.answer && (
         <div aria-live="polite">

@@ -202,6 +202,22 @@ test("every result card can go full screen and back", async ({ page }) => {
   await expect(chart).not.toHaveClass(/is-full/);
 });
 
+test.describe("AI explanation card", () => {
+  test.use({ serviceWorkers: "block" });
+  test("the Explain button and the full-screen button sit side by side, never on top of each other", async ({ page }) => {
+    await page.route("**/api/ai/status", (route) => route.fulfill({ json: { enabled: true, provider: "zai", model: "test" } }));
+    await page.goto("/");
+    const card = page.locator("section[aria-label='AI explanation']");
+    const explain = card.getByRole("button", { name: "Explain" });
+    await expect(explain).toBeVisible();
+    const fs = card.getByRole("button", { name: "Show full screen" });
+    await expect(fs).toHaveCount(1);
+    const [a, b] = [(await explain.boundingBox())!, (await fs.boundingBox())!];
+    const apart = a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+    expect(apart).toBe(true);
+  });
+});
+
 test.describe("map base layers", () => {
   // the service worker would answer the map requests itself, out of reach of page.route
   test.use({ serviceWorkers: "block" });

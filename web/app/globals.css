@@ -653,6 +653,8 @@ pre.log {
 .panel-fs:hover:not([disabled]) { color: var(--text-primary); }
 .panel-fs.corner { position: absolute; top: 14px; right: 14px; z-index: 2; }
 .panel > h2, .panel > .data-flag, .panel > p.muted.small:first-child { margin-right: 38px; }
+/* a card that opens with a row of buttons keeps them clear of the corner full-screen button */
+.panel:has(> .panel-fs.corner) > .row:first-child { margin-right: 38px; }
 .panel:fullscreen, .panel.is-covering {
   border: 0; border-radius: 0; box-shadow: none; padding: 28px 36px; overflow: auto; background: var(--page);
 }
