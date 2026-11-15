@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { fmtP, fmtSigned } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import Panel from "@/components/Panel";
@@ -23,8 +23,41 @@ type Reply = {
   template_verdicts?: { analysis_id: string; headline: string; sentences: string[]; caveats: string[] }[];
   check?: { numbers_checked: number };
   suggestions?: string[];
+  timing?: { total_s: number; ai_calls: number };
 };
 type Turn = { q: string; r: Reply };
+type Progress = { step: "thinking" | "tool" | "check"; round?: number; tool?: string; variable?: string | null; places?: string[]; query?: string | null };
+
+/** Ask with progress: the server sends one JSON line per step, then the checked answer. */
+async function askWithProgress(body: unknown, onProgress: (p: Progress) => void): Promise<Reply> {
+  const res = await fetch("/api/ai/ask/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try { const j = await res.json(); if (typeof j.detail === "string") msg = j.detail; } catch { /* not JSON */ }
+    throw new ApiError(msg, res.status);
+  }
+  if (!res.body) return apiPost<Reply>("/ai/ask", body); // no streaming in this browser
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let result: Reply | null = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const ev = JSON.parse(line);
+      if (ev.type === "progress") onProgress(ev as Progress);
+      else if (ev.type === "result") result = ev.result as Reply;
+    }
+  }
+  if (!result) throw new Error("The answer did not arrive. Please try again.");
+  return result;
+}
 
 const EXAMPLES = [
   "Is the whole Earth really warming, and since when?",
@@ -34,11 +67,31 @@ const EXAMPLES = [
 
 export default function AskPage() {
   const { lang, t } = useI18n();
+  const tr = t; // "t" is also the name of each turn below
   const [status, setStatus] = useState<{ enabled: boolean; provider: string; model: string | null } | null>(null);
   const [q, setQ] = useState("");
   const [tutor, setTutor] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [steps, setSteps] = useState<string[]>([]);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (!busy) return;
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
+  function stepText(p: Progress): string {
+    if (p.step === "check") return t("Checking every number against the computed results…");
+    if (p.step === "thinking") return p.round === 1 ? t("The AI is reading your question…") : t("The AI is reading the results and writing the answer…");
+    const places = p.places ?? [];
+    if (p.tool === "run_trend_analysis") return t("Running the {variable} analysis for {place}…", { variable: (p.variable ?? "").toLowerCase(), place: places[0] ?? "" });
+    if (p.tool === "compare_regions") return t("Comparing {variable} in {a} and {b}…", { variable: (p.variable ?? "").toLowerCase(), a: places[0] ?? "", b: places[1] ?? "" });
+    if (p.tool === "scan_region") return t("Testing every variable for {place}…", { place: places[0] ?? "" });
+    if (p.tool === "find_places") return t("Looking up “{query}”…", { query: p.query ?? "" });
+    return t("Looking up the variables…");
+  }
   const [needQuestion, setNeedQuestion] = useState(false);
 
   useEffect(() => { apiGet<typeof status>("/ai/status").then(setStatus).catch(() => setStatus({ enabled: false, provider: "none", model: null })); }, []);
@@ -50,6 +103,9 @@ export default function AskPage() {
       return;
     }
     setNeedQuestion(false);
+    setSteps([]);
+    setStartedAt(Date.now());
+    setNow(Date.now());
     setBusy(true);
     const history = turns.flatMap((t) => [
       { role: "user", content: t.q },
@@ -57,7 +113,7 @@ export default function AskPage() {
     ]).slice(-6);
     let r: Reply;
     try {
-      r = await apiPost<Reply>("/ai/ask", { question, mode: tutor ? "tutor" : "explain", history, lang });
+      r = await askWithProgress({ question, mode: tutor ? "tutor" : "explain", history, lang }, (p) => setSteps((s) => [...s, stepText(p)]));
     } catch (e) {
       r = { mode: "error", reason: (e as Error).message };
     }
@@ -104,6 +160,18 @@ export default function AskPage() {
         </div>
       </section>
 
+      {busy && (
+        <div className="card ai-progress" role="status" aria-live="polite">
+          <p className="ai-progress-head">
+            <span className="spinner-dot" aria-hidden="true" /> {t("Working on it…")}
+            {startedAt && <span className="muted"> {t("{s} s", { s: Math.max(0, Math.round((now - startedAt) / 1000)) })}</span>}
+          </p>
+          <ol className="ai-steps">
+            {steps.map((s, i) => <li key={i} className={i === steps.length - 1 ? "current" : "done"}>{s}</li>)}
+          </ol>
+        </div>
+      )}
+
       <div className="stack" style={{ marginTop: 16 }} aria-live="polite">
         {turns.map((t, i) => (
           <Panel key={i} aria-label={`Answer ${i + 1}`}>
@@ -112,7 +180,10 @@ export default function AskPage() {
               <>
                 <h2>{t.r.answer.headline}</h2>
                 {t.r.answer.explanation.split(/\n+/).map((p, j) => <p key={j}>{p}</p>)}
-                <p className="small muted">✓ Number check passed: {t.r.check?.numbers_checked ?? 0} numbers match the stored analyses.</p>
+                <p className="small muted">
+                  ✓ Number check passed: {t.r.check?.numbers_checked ?? 0} numbers match the stored analyses.
+                  {t.r.timing && <> · {tr("Answered in {s} s", { s: t.r.timing.total_s })}</>}
+                </p>
                 {!!t.r.answer.follow_up_questions?.length && (
                   <div className="chip-list">
                     {t.r.answer.follow_up_questions.map((f) => <button key={f} type="button" className="chip" onClick={() => ask(f)}>{f}</button>)}

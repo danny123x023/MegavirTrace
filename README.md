@@ -165,6 +165,13 @@ MEGAVIR_AI_HOURLY_LIMIT_PER_IP=20
 MEGAVIR_AI_DAILY_CAP=500
 ```
 
+A typical question takes two AI calls: one to choose the analysis and one to write the answer. To keep
+it that way, the tools take place names (looked up on the server) and list the variable ids, and
+answers are kept to about 120 words. The Ask page shows each step as it happens (`POST /ai/ask/stream`,
+one JSON line per step). The answer itself appears only after every number in it has been checked.
+Each answer reports its timing. A region's monthly mean is stored once per data version
+(`region_series`), so comparisons with big regions such as the whole Earth don't reread every cell.
+
 Also set a spend limit in the provider's own console. For Anthropic, the server-side refusal fallback
 (`fallbacks: "default"`) is enabled. Daily answers, fallbacks, failures and token counts are kept in the
 `ai_usage` table: counts only, never visitors' text or IP addresses.

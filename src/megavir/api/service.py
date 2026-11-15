@@ -175,18 +175,61 @@ def region_cells(conn, var, v: Version, region: Region):
     return type(rc)(rc.ii[keep], rc.jj[keep], rc.frac[keep], weights[keep], rc.lat[keep], rc.lon[keep])
 
 
+# A region's monthly mean is kept once per data version: comparisons, scans and cases then reuse
+# it instead of reading every cell again (the whole Earth at 0.5° is 259,200 cells, ~30 s).
+SERIES_SQL = """
+CREATE TABLE IF NOT EXISTS region_series (
+    version_id INTEGER NOT NULL,
+    region_key TEXT NOT NULL,          -- sha1 of the region's outline or box
+    mean       DOUBLE PRECISION[] NOT NULL,
+    coverage   DOUBLE PRECISION[] NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (version_id, region_key)
+);
+"""
+_series_ready: set[str] = set()
+
+
+def _series_table(conn) -> None:
+    key = f"{conn.info.dbname}@{conn.info.host}:{conn.info.port}"
+    if key not in _series_ready:
+        conn.execute(SERIES_SQL)
+        conn.commit()
+        _series_ready.add(key)
+
+
+def region_key(region: Region) -> str:
+    return hashlib.sha1(json.dumps(region.descriptor(), sort_keys=True, default=str).encode()).hexdigest()
+
+
 def regional_monthly(conn, var_id: str, region: Region, need_cells: bool = False) -> RegionalData:
     var = get_variable(var_id)
     versions = active_versions(conn)
     v = versions.get(var_id)
     if not v:
         raise AnalysisError(f"{var.name} is not loaded yet")
+    _series_table(conn)
+    key = region_key(region)
+    if not need_cells:
+        hit = conn.execute(
+            "SELECT mean, coverage FROM region_series WHERE version_id = %s AND region_key = %s", (v.id, key)
+        ).fetchone()
+        if hit and len(hit["mean"]) == len(v.months):
+            mean = np.array(hit["mean"], float)
+            cov = np.array(hit["coverage"], float)
+            return RegionalData(v, v.months, mean, cov, None, None, np.empty((0, 0)))
     sub = region_cells(conn, var, v, region)
     w = sub.area
     cube = read_cells(conn, v, sub.ii, sub.jj)
     if not np.isfinite(cube).any():
         raise AnalysisError(_outside_message(var, v))
     mean, cov = region_mean(cube, w)
+    conn.execute(
+        """INSERT INTO region_series (version_id, region_key, mean, coverage) VALUES (%s, %s, %s, %s)
+           ON CONFLICT (version_id, region_key) DO UPDATE SET mean = EXCLUDED.mean, coverage = EXCLUDED.coverage""",
+        (v.id, key, [float(x) for x in mean], [float(x) for x in cov]),
+    )
+    conn.commit()
     return RegionalData(v, v.months, mean, cov, sub, w, cube if need_cells else np.empty((0, 0)))
 
 

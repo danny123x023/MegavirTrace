@@ -124,3 +124,13 @@ CREATE TABLE IF NOT EXISTS admin_session (
     remember   BOOLEAN NOT NULL DEFAULT false,      -- "keep me signed in": 30 days instead of 12 hours
     user_agent TEXT NOT NULL DEFAULT ''
 );
+
+-- a region's monthly mean, kept once per data version (reused by comparisons, scans and cases)
+CREATE TABLE IF NOT EXISTS region_series (
+    version_id INTEGER NOT NULL,
+    region_key TEXT NOT NULL,
+    mean       DOUBLE PRECISION[] NOT NULL,
+    coverage   DOUBLE PRECISION[] NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (version_id, region_key)
+);

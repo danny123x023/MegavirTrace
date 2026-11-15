@@ -167,6 +167,17 @@ const ES: Record<string, string> = {
     "Qué celdas pasan depende de la zona visible: el control de falsos descubrimientos se aplica a las celdas mostradas.",
   "Detective cases": "Casos de detective",
   "Admin panel": "Panel de administración",
+  "Checking every number against the computed results…": "Comprobando cada número con los resultados calculados…",
+  "The AI is reading your question…": "La IA está leyendo tu pregunta…",
+  "The AI is reading the results and writing the answer…": "La IA está leyendo los resultados y escribiendo la respuesta…",
+  "Running the {variable} analysis for {place}…": "Calculando el análisis de {variable} para {place}…",
+  "Comparing {variable} in {a} and {b}…": "Comparando {variable} en {a} y {b}…",
+  "Testing every variable for {place}…": "Probando todas las variables para {place}…",
+  "Looking up “{query}”…": "Buscando «{query}»…",
+  "Looking up the variables…": "Consultando las variables…",
+  "Working on it…": "Trabajando en ello…",
+  "{s} s": "{s} s",
+  "Answered in {s} s": "Respondido en {s} s",
   "Needed to import the sources marked \"Earthdata Login\" on the Data import page. The password is kept only on the server, never in the database, and is never shown again.":
     "Necesaria para importar las fuentes marcadas «Earthdata Login» en la página de importación de datos. La contraseña se guarda solo en el servidor, nunca en la base de datos, y no se vuelve a mostrar.",
   "Choose which AI service answers questions and with which key, manage the NASA Earthdata account that data imports use, and see who is signed in as administrator.":

@@ -223,7 +223,7 @@ test.describe("ask page", () => {
   test("the Ask button is ready before typing; an empty question gets a hint, not a request", async ({ page }) => {
     await page.route("**/api/ai/status", (route) => route.fulfill({ json: { enabled: true, provider: "test", model: null } }));
     let asked = 0;
-    await page.route("**/api/ai/ask", (route) => { asked++; return route.abort(); });
+    await page.route(/\/api\/ai\/ask(\/stream)?$/, (route) => { asked++; return route.abort(); });
     await page.goto("/ask");
     const ask = page.getByRole("button", { name: "Ask", exact: true });
     await expect(ask).toBeEnabled();
@@ -233,6 +233,23 @@ test.describe("ask page", () => {
     await page.getByRole("textbox", { name: "Your question" }).fill("Is it warming?");
     await expect(page.locator("#q-need")).toHaveCount(0);
     expect(asked).toBe(0);
+  });
+
+  test("progress lines show while the AI works, then the checked answer", async ({ page }) => {
+    await page.route("**/api/ai/status", (route) => route.fulfill({ json: { enabled: true, provider: "test", model: "m" } }));
+    const lines = [
+      { type: "progress", step: "thinking", round: 1 },
+      { type: "progress", step: "tool", tool: "run_trend_analysis", variable: "Rainfall", places: ["Sahel"], query: null },
+      { type: "progress", step: "thinking", round: 2 },
+      { type: "progress", step: "check" },
+      { type: "result", result: { mode: "answered", answer: { headline: "Rainfall in the Sahel is rising.", explanation: "A short answer.", follow_up_questions: [] }, check: { numbers_checked: 3 }, analyses: [], timing: { total_s: 9.5, ai_calls: 2 } } },
+    ];
+    await page.route("**/api/ai/ask/stream", (route) => route.fulfill({ contentType: "application/x-ndjson", body: lines.map((l) => JSON.stringify(l)).join("\n") + "\n" }));
+    await page.goto("/ask");
+    await page.getByRole("textbox", { name: "Your question" }).fill("Is rainfall in the Sahel changing?");
+    await page.getByRole("button", { name: "Ask", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Rainfall in the Sahel is rising." })).toBeVisible();
+    await expect(page.getByText("Answered in 9.5 s")).toBeVisible();
   });
 });
 

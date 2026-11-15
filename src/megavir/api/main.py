@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 
@@ -427,6 +428,59 @@ def ai_ask(body: AskIn, request: Request):
     from megavir.api.security import client_ip
 
     return ask(body.question, body.lang, body.mode, body.history, client_ip(request))
+
+
+@app.post("/ai/ask/stream")
+def ai_ask_stream(body: AskIn, request: Request):
+    """The same answer as /ai/ask, with progress on the way (one JSON object per line).
+
+    Lines: {"type": "progress", ...} while the AI works (which tool, which place), then one
+    {"type": "result", "result": {...}}.  The answer itself is never streamed: every number in it
+    is checked against the computed results before it is sent."""
+    import queue
+    import threading
+
+    from fastapi.responses import StreamingResponse
+
+    from megavir.ai import ask
+    from megavir.api.security import client_ip
+
+    events: queue.Queue = queue.Queue()
+    ip = client_ip(request)
+
+    def work() -> None:
+        try:
+            res = ask(
+                body.question,
+                body.lang,
+                body.mode,
+                body.history,
+                ip,
+                progress=lambda e: events.put({"type": "progress", **e}),
+            )
+        except Exception:  # noqa: BLE001
+            res = {"mode": "error", "reason": "The AI service failed. Please try again."}
+        events.put({"type": "result", "result": res})
+        events.put(None)
+
+    threading.Thread(target=work, daemon=True).start()
+
+    def lines():
+        while True:
+            try:
+                ev = events.get(timeout=10)
+            except queue.Empty:
+                yield '{"type":"wait"}\n'  # keeps proxies from closing a quiet connection
+                continue
+            if ev is None:
+                return
+            yield json.dumps(ev, default=str) + "\n"
+
+    return StreamingResponse(
+        lines(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/ai/explain")
