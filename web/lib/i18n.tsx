@@ -78,8 +78,10 @@ const ES: Record<string, string> = {
   "Computing… the first analysis of a region can take a few seconds; repeats are instant.":
     "Calculando… el primer análisis de una región puede tardar unos segundos; las repeticiones son instantáneas.",
   "Updating…": "Actualizando…",
-  "Raw months are shown as measured; the statistics use monthly anomalies (each month compared with the same month in other years).":
-    "Los meses se muestran tal como se midieron; las estadísticas usan anomalías mensuales (cada mes comparado con el mismo mes de otros años).",
+  "Raw months are shown as measured; the statistics use the yearly means of the monthly anomalies (each month compared with the same month in other years).":
+    "Los meses se muestran tal como se midieron; las estadísticas usan las medias anuales de las anomalías mensuales (cada mes comparado con el mismo mes de otros años).",
+  "The chart shows months; the statistics use their yearly means, because neighbouring months are not independent.":
+    "El gráfico muestra meses; las estadísticas usan sus medias anuales, porque los meses vecinos no son independientes.",
   "Where is it changing?": "¿Dónde está cambiando?",
   "The statistics": "Las estadísticas",
   "Computed in {ms} ms the first time; stored and reused for this data version.":

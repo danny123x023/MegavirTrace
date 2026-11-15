@@ -11,6 +11,7 @@ import math
 
 from megavir.catalog import Variable
 
+from .aggregate import months_phrase
 from .stats import TrendStats
 
 MINUS = "−"
@@ -36,7 +37,6 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "p {p_ols}), or they disagree on its direction, so we do not call it significant.",
         "untestable": "Each {step} is so similar to the one before ({r1}) that the record holds too few "
         "independent values to test. A longer record is needed.",
-        "try_monthly": "Monthly values hold much more information: try the monthly anomalies view.",
         "effect": "Over the record the trend line moves {total} {unit_total}: {effect} next to the usual "
         "{step}-to-{step} scatter.",
         "need_more": "To tell a trend of this size from the natural ups and downs would take about "
@@ -58,7 +58,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "cav_test": "TEST DATA: a small development sample, not a real result.",
         "cav_synthetic": "SYNTHETIC DATA: made-up numbers for software testing only.",
         "cav_coverage": "Parts of the region had no data in some months (lowest coverage {cov}).",
-        "cav_seasonal": "Monthly values: each month is compared only with the same month in other years.",
+        "cav_monthly": "The chart shows months; the tests use the yearly means of the monthly anomalies, because "
+        "neighbouring months, and the months of one El Niño year, are not independent.",
+        "cav_months_used": "Yearly values here use only the months with data ({months}); the other months are "
+        "never observed over this region.",
         # compare
         "cmp_head_sig": "{Name}: {a} and {b} really are changing differently, by about {diff} {unit} per decade.",
         "cmp_head_nosig": "{Name}: no clear difference between the trends in {a} and {b}.",
@@ -91,7 +94,6 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "p {p_ols}), o no coinciden en la dirección, así que no la llamamos significativa.",
         "untestable": "Cada {step} se parece tanto al anterior ({r1}) que el registro tiene muy pocos "
         "valores independientes. Hace falta un registro más largo.",
-        "try_monthly": "Los valores mensuales contienen mucha más información: pruebe la vista de anomalías mensuales.",
         "effect": "A lo largo del registro la línea de tendencia se mueve {total} {unit_total}: un cambio "
         "{effect} frente a la dispersión habitual.",
         "need_more": "Para distinguir una tendencia de este tamaño de los altibajos naturales harían falta "
@@ -112,7 +114,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "cav_test": "DATOS DE PRUEBA: una muestra pequeña de desarrollo, no un resultado real.",
         "cav_synthetic": "DATOS SINTÉTICOS: números inventados solo para probar el software.",
         "cav_coverage": "Partes de la región no tuvieron datos algunos meses (cobertura mínima {cov}).",
-        "cav_seasonal": "Valores mensuales: cada mes se compara solo con el mismo mes de otros años.",
+        "cav_monthly": "El gráfico muestra meses; las pruebas usan las medias anuales de las anomalías mensuales, "
+        "porque los meses vecinos, y los meses de un mismo año de El Niño, no son independientes.",
+        "cav_months_used": "Los valores anuales aquí usan solo los meses con datos ({months}); los demás meses nunca "
+        "se observan en esta región.",
         "cmp_head_sig": "{Name}: {a} y {b} realmente cambian de forma distinta, unos {diff} {unit} por década.",
         "cmp_head_nosig": "{Name}: sin diferencia clara entre las tendencias de {a} y {b}.",
         "cmp_body": "La prueba se hace sobre la diferencia {a} menos {b}, así que los altibajos comunes se "
@@ -189,6 +194,8 @@ def trend_verdict(
     lang: str = "en",
     data_kind: str = "real",
     min_coverage: float | None = None,
+    mode: str = "annual",
+    months_used: tuple[int, ...] | list[int] = tuple(range(1, 13)),
 ) -> dict:
     """Return {"status", "headline", "sentences", "caveats", "shown"} for one trend."""
     if lang not in TEMPLATES:
@@ -231,8 +238,6 @@ def trend_verdict(
         headline = t["head_untestable"].format(**common)
         shown["r1"] = fmt_num(st.ols.r1, lang=lang)
         sentences.append(t["untestable"].format(r1=f"r₁ = {shown['r1']}", step=step))
-        if st.per_year == 1:
-            sentences.append(t["try_monthly"])
     elif st.significant:
         status = "significant"
         key = "head_sig_pl" if loc.get("plural") and "head_sig_pl" in t else "head_sig"
@@ -307,8 +312,10 @@ def trend_verdict(
         )
 
     caveats = [t["cav_cause"], loc["caveat"]]
-    if st.seasonal_test:
-        caveats.append(t["cav_seasonal"])
+    if mode in ("monthly", "raw"):
+        caveats.append(t["cav_monthly"])
+    if mode != "season" and 0 < len(months_used) < 12:
+        caveats.append(t["cav_months_used"].format(months=months_phrase(tuple(months_used), lang)))
     if min_coverage is not None and min_coverage < 0.95:
         caveats.append(t["cav_coverage"].format(cov=fmt_pct(min_coverage)))
     dc = data_caveat(data_kind, lang)

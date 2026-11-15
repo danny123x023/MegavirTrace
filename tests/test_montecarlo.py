@@ -1,7 +1,8 @@
 """Monte Carlo checks of the honesty commitment (run in CI).
 
 * false alarms of the agreement rule on trend-free AR(1) series:
-  at most 5 % at lag-1 autocorrelation 0.3 and at most 7 % at 0.5;
+  at most 5 % at lag-1 autocorrelation 0.3, at most 7 % at 0.5 and at most 6 % at 0.7;
+* the monthly views (tested on yearly means) stay near 5 % with year-to-year memory;
 * a synthetic trend is recovered inside its 95 % interval;
 * the two-region difference test keeps false alarms near 5 % whatever the correlation;
 * the vectorised cell engine gives the same slope and p as the per-series engine.
@@ -30,7 +31,7 @@ def ar1(rng, n, phi, reps):
 
 
 @pytest.mark.parametrize("n", [20, 30])
-@pytest.mark.parametrize("phi,limit", [(0.3, 0.05), (0.5, 0.07)])
+@pytest.mark.parametrize("phi,limit", [(0.3, 0.05), (0.5, 0.07), (0.7, 0.06)])
 def test_false_alarm_rate_yearly(n, phi, limit):
     rng = np.random.default_rng(1000 + n + int(phi * 10))
     t = np.arange(n) + 0.5
@@ -39,16 +40,24 @@ def test_false_alarm_rate_yearly(n, phi, limit):
     assert rate <= limit, f"false alarms {rate:.3f} > {limit}"
 
 
-@pytest.mark.parametrize("phi", [0.3, 0.5])
-def test_false_alarm_rate_monthly_seasonal(phi):
-    rng = np.random.default_rng(77)
-    years = 15
-    n = 12 * years
-    t = (np.arange(n) + 0.5) / 12
-    grp = np.arange(n) % 12 + 1
-    X = ar1(rng, n, phi, 600)
-    rate = np.mean([trend_test(t, x, 12, grp)[4] for x in X])
-    assert rate <= 0.07
+@pytest.mark.parametrize("year_phi", [0.0, 0.5])
+def test_false_alarm_rate_monthly_mode_with_year_to_year_memory(year_phi):
+    """Monthly views: month-to-month memory plus a slow year-to-year swing (as El Niño gives).
+    A one-month AR(1) correction gave 18–31 % false alarms here; the yearly-means test stays near 5 %."""
+    from megavir.engine.aggregate import build_series, month_index
+
+    rng = np.random.default_rng(78 + int(year_phi * 10))
+    years = 25
+    idx = np.arange(month_index(2000, 1), month_index(2000 + years - 1, 12) + 1)
+    monthly_noise = ar1(rng, idx.size, 0.5, 1000)
+    yearly = np.repeat(ar1(rng, years, year_phi, 1000) * 0.6, 12, axis=1)
+    season = 3 * np.sin(2 * np.pi * (idx % 12) / 12)
+    hits = []
+    for x in monthly_noise + yearly + season:
+        s = build_series(idx, x, "monthly")
+        hits.append(trend_test(s.t, s.y)[4])
+    rate = np.mean(hits)
+    assert rate <= 0.07, f"false alarms {rate:.3f}"
 
 
 @pytest.mark.parametrize("phi", [0.0, 0.3])

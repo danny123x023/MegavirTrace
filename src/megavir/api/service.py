@@ -18,14 +18,16 @@ import numpy as np
 
 from megavir.catalog import DATASETS, VARIABLES, get_variable, series_units
 from megavir.engine.aggregate import (
+    MIN_CALENDAR_MONTHS,
     MIN_COVERAGE,
+    MIN_MONTHS_PER_YEAR,
     build_series,
     month_label,
     month_zscore,
-    per_cell_monthly_anomalies,
     per_cell_values,
     region_mean,
 )
+from megavir.engine.stats import MIN_POINTS
 from megavir.engine.cellmap import block_size, cell_trends, merge_blocks
 from megavir.engine.compare import compare_series
 from megavir.engine.stats import NotEnoughData, analyse_trend
@@ -33,7 +35,7 @@ from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
 from megavir.places.geometry import apply_domain, cells_for
 from megavir.store import GridSpec, Version, active_versions, read_cells, read_mask
 
-ENGINE_VERSION = "2026.11-7"
+ENGINE_VERSION = "2026.11-8"
 MAX_MAP_CELLS = 40_000  # mapped cell by cell up to this many
 MAP_TARGET_CELLS = 20_000  # bigger regions: cells merged into blocks, at most this many
 
@@ -368,8 +370,7 @@ def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
     try:
         st = analyse_trend(s.t, s.y, s.years, s.labels, s.per_year, s.group)
     except NotEnoughData as e:
-        hint = "Try a longer period." if req["mode"] == "annual" else "Try a longer period or yearly values."
-        raise AnalysisError(f"Not enough data for {var.name.lower()} in {region.name}: {e}. {hint}") from None
+        raise AnalysisError(not_enough_message(var, region.name, s, req, rd, str(e))) from None
     # lowest coverage among the months that actually entered the statistics
     used = (
         np.isin(rd.months, _months_used(rd.months, s))
@@ -377,7 +378,9 @@ def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
         & (rd.coverage >= MIN_COVERAGE)
     )
     min_cov = float(np.nanmin(rd.coverage[used])) if used.any() else None
-    verdict = trend_verdict(st, var, region.name, unit, s.season, req["lang"], v.kind, min_cov)
+    verdict = trend_verdict(
+        st, var, region.name, unit, s.season, req["lang"], v.kind, min_cov, req["mode"], s.months_used
+    )
     stats = st.to_dict()
     stats["per_decade"] = {
         "sen": st.sen.slope * 10,
@@ -398,12 +401,16 @@ def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
         "series": {
             "mode": s.mode,
             "season": s.season,
-            "labels": s.labels,
-            "t": _nan_to_none(s.t),
-            "values": _nan_to_none(s.y),
+            # the chart: months in monthly and raw modes, else the tested values themselves
+            "labels": s.chart_labels,
+            "t": _nan_to_none(s.chart_t),
+            "values": _nan_to_none(s.plot_y),
             "plot_values": _nan_to_none(s.plot_y),
-            "trend_line": _nan_to_none(st.sen.intercept + st.sen.slope * s.t),
-            "per_year": s.per_year,
+            "trend_line": _nan_to_none(st.sen.intercept + st.sen.slope * s.chart_t),
+            "per_year": 12 if s.mode in ("monthly", "raw") else s.per_year,
+            # the values the tests ran on (yearly means of the monthly anomalies in monthly modes)
+            "tested": {"labels": s.labels, "t": _nan_to_none(s.t), "values": _nan_to_none(s.y)},
+            "months_used": list(s.months_used),
         },
         "monthly": {
             "labels": [month_label(int(m)) for m in rd.months],
@@ -421,6 +428,46 @@ def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
     result["compute_ms"] = round((time.time() - t0) * 1000)
     store(conn, fid, "trend", req, [v.id], result, replace=hit is not None)
     return result
+
+
+def not_enough_message(var, place: str, s, req: dict, rd: RegionalData, why: str) -> str:
+    """Why a record cannot be tested, and what (if anything) would help."""
+    head = f"Not enough data for {var.name.lower()} in {place}: {why}."
+    if s.mode != "season" and len(s.months_used) < MIN_CALENDAR_MONTHS:
+        n = len(s.months_used)
+        return (
+            f"{head} Only {n} calendar month{'s' if n != 1 else ''} ever "
+            f"{'have' if n != 1 else 'has'} data covering at least half of this region, too few to form yearly values."
+        )
+    ok = np.isfinite(rd.values) & (rd.coverage >= MIN_COVERAGE)
+    months = rd.months[ok]
+    if req["start_year"]:
+        months = months[months // 12 >= req["start_year"]]
+    if req["end_year"]:
+        months = months[months // 12 <= req["end_year"]]
+    restricted = bool(req["start_year"] or req["end_year"])
+    if months.size == 0:
+        return f"{head} {'Try a longer period.' if restricted else 'No month has data covering at least half of the region.'}"
+    k = len(s.months_used) if s.mode != "season" else 3
+    need = 3 if s.mode == "season" else int(math.ceil(MIN_MONTHS_PER_YEAR * k / 12 - 1e-9))
+    # how many years the span of the record could fill, even if every month had data
+    first, last = int(months.min()), int(months.max())
+    possible = sum(
+        1 for y in range(first // 12, last // 12 + 1) if min(last, y * 12 + 11) - max(first, y * 12) + 1 >= need
+    )
+    if possible < MIN_POINTS:
+        if restricted:
+            return f"{head} Try a longer period."
+        return (
+            f"{head} The record here runs from {month_label(first)} to {month_label(last)}, which holds only "
+            f"{possible} year{'s' if possible != 1 else ''} with enough months; a trend test needs at least {MIN_POINTS}."
+        )
+    if s.mode == "season":
+        return f"{head} Too few years have all three months of {s.season} with data covering at least half of the region."
+    return (
+        f"{head} Too few years have at least {need} of their {k} observed months with data covering at "
+        "least half of the region."
+    )
 
 
 def _map_was_too_big(result: dict) -> bool:
@@ -477,22 +524,16 @@ def cell_map_for(cube: np.ndarray, months: np.ndarray, cells, spec, req: dict, v
         lat = spec.lat0 + spec.res * (merged["bi"] * k + (k - 1) / 2)
         lon = spec.lon0 + spec.res * (merged["bj"] * k + (k - 1) / 2)
         frac = merged["frac"]
-    if req["mode"] in ("monthly", "raw"):
-        t, vals, grp = per_cell_monthly_anomalies(months, cube, req["start_year"], req["end_year"])
-        if np.unique(t.astype(int)).size < 8:
-            return {"skipped": "not enough years for a cell map"}
-        res = cell_trends(t, vals, group=grp)
-        basis = "monthly anomalies (seasonal test)"
-    else:
-        mode = "season" if req["mode"] == "season" else "annual"
-        t, vals = per_cell_values(months, cube, mode, req["season"], req["start_year"], req["end_year"])
-        if t.size < 8:
-            return {"skipped": "not enough years for a cell map"}
-        factor = 1.0
-        if var.agg == "sum":
-            factor = 12.0 if mode == "annual" else 3.0
-        res = cell_trends(t, vals * factor)
-        basis = "yearly values" if mode == "annual" else f"{req['season']} values"
+    # the same values the regional test of each mode uses (yearly mean anomalies in monthly modes)
+    mode = req["mode"]
+    t, vals = per_cell_values(months, cube, mode, req["season"], req["start_year"], req["end_year"], var.agg)
+    if t.size < MIN_POINTS:
+        return {"skipped": "not enough years for a cell map"}
+    res = cell_trends(t, vals)
+    basis = {
+        "annual": "yearly values",
+        "season": f"{req['season']} values",
+    }.get(mode, "yearly means of the monthly anomalies")
     return {
         "res": spec.res * k,
         "native_res": spec.res,

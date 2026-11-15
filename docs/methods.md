@@ -47,17 +47,27 @@ treated as missing, and the lowest coverage used is reported as a caveat.
 
 Monthly values become:
 - **yearly values:** a year needs at least 10 of 12 months, and its value is the 12-month climatological mean
-  plus the mean anomaly of the months present, so a missing winter month does not bias the year;
+  plus the mean anomaly of the months present, so a missing winter month does not bias the year. Where some
+  calendar months are never observed over the region (polar night for ocean colour), years are built from the
+  k months that are and need the same share of them (⌈10k/12⌉ of k, with k ≥ 3); the verdict names those
+  months, and a yearly total (rainfall) is then the total over them;
 - **seasonal values:** all 3 months are needed, and December belongs to the following DJF;
-- **monthly anomalies:** each month minus its calendar month's mean over the chosen years, tested with the
-  seasonal Mann–Kendall test.
+- **monthly anomalies:** each month minus its calendar month's mean over the chosen years. The chart shows the
+  months, but the tests use their yearly means. Neighbouring months, and the months of one El Niño year, are not
+  independent: with month-to-month memory plus a slow year-to-year swing, a correction for one-month memory
+  (the seasonal Mann–Kendall test with an AR(1) fitted at one month) called 18–31% of trend-free series
+  significant. Under AR(1) noise the monthly and yearly-mean slopes carry about the same information, so
+  little is lost.
 
 ## 3. Trend tests
 
 Let *n* be the number of values and r̂₁ the lag-1 autocorrelation of the least-squares residuals, computed
-using only neighbours exactly one step apart. Residuals of a fitted line underestimate r₁ by about
-(2 + 4r₁)/n (van Giersbergen 2005), so we use r₁ = (n r̂₁ + 2)/(n − 4), clipped to [0, 0.95] for the
-corrections.
+using only neighbours exactly one step apart. This estimate is biased low: by about (2 + 5r₁)/n in long records
+(the (2 + 4r₁)/n of van Giersbergen 2005 for the least-squares estimator, plus r₁/n because the ratio divides by
+all n squared residuals), and by more at high r₁ in short records (it averages 0.56 at r₁ = 0.9 and n = 25). We
+simulated E[r̂₁ | r₁, n] for exactly this estimator (20,000 series per point, n = 6–200, r₁ = −0.5 to 0.99) and
+invert it; beyond n = 200 the large-n form r₁ = (n r̂₁ + 2)/(n − 5) is used. The result is clipped to [0, 0.95]
+for the corrections.
 
 **Least squares.** The slope's standard error is widened by √((n − 2)/(n_eff − 2)), with
 n_eff = n(1 − r₁)/(1 + r₁) (Santer et al. 2000). The test is a t-test with n_eff − 2 degrees of freedom.
@@ -103,7 +113,8 @@ two-piece (hinge) fit that is reported only when it beats the straight line by �
 
 ## 4. Where inside the region
 
-The same tests run, vectorised, on every cell's yearly (or seasonal) series. For speed, the Sen median uses
+The same tests run, vectorised, on every cell's yearly (or seasonal) series; in the monthly views, on the
+yearly means of each cell's monthly anomalies. For speed, the Sen median uses
 partitioning for complete cells and sorting for cells with gaps. Benjamini–Hochberg q-values are computed
 across the region's cells, and a cell passes when q ≤ 2α. Wilks (2016) shows that controlling the FDR at
 α_FDR = 2α keeps the field-wide false-alarm rate near α for spatially correlated fields. Because which cells
@@ -178,8 +189,9 @@ never part of the trend tests.
 | --- | --- |
 | Uncorrected S, τ, Var(S), Z, p and Sen's slope vs `pymannkendall`; least-squares slope and SE vs `scipy` | Identical to floating-point precision |
 | Exact AR(1) Var(S) vs 6,000 simulated series | Within 6% (the Monte Carlo error) |
-| False alarms, 2,000 AR(1) series per setting, n = 20 and 30 | 3.5–4.1% at r₁ = 0.3 (target ≤ 5%); 4.4–4.7% at r₁ = 0.5 (target ≤ 7%) |
-| 95% interval coverage of a synthetic trend | 91–98% |
+| False alarms, 2,000 AR(1) series per setting, n = 20 and 30 | 4.0–4.1% at r₁ = 0.3 (target ≤ 5%); 4.4–4.8% at 0.5 (target ≤ 7%); 5.0–5.5% at 0.7 (target ≤ 6%); 5.8–6.8% at 0.9 (see Limitations) |
+| Monthly views: month-to-month memory 0.5 plus a year-to-year swing, 25 years, 1,000 series | 2.0% with an uncorrelated swing, 4.0% with persistence 0.5 (target ≤ 7%); the earlier one-month correction gave 18–31% |
+| 95% interval coverage of a synthetic trend | 95–97.5% |
 | Difference test, correlation −0.5 to 0.95 | 3.7–4.8% false alarms |
 | Moves together: unrelated series sharing a season and a trend, 25 lags searched | ≤ 3.5% false claims; a real 3-month lead found at the right lag every time |
 | "Speeding up" claims for a straight trend with AR(1) noise, n = 15–45 | ≤ 3.3% at r₁ = 0.3, ≤ 4.8% at r₁ = 0.5; real acceleration found in > 90% of 45-year records |
@@ -201,7 +213,10 @@ A trend is not a cause. Records of 20–25 years detect only large trends agains
 the verdict says so. Reanalysis and land-model variables (MERRA-2, GLDAS) are model estimates constrained by
 observations. Coverage changes can bias regional means, which is why coverage is reported. The AR(1) model may
 understate long-memory variability (for example deep soil moisture or ocean heat), so fragile and borderline
-results should be read with care.
+results should be read with care. Its blind spot is a mix of fast and slow noise: month-to-month memory 0.5
+plus a slow yearly swing with persistence 0.7 gives 7.7% false alarms in 25-year records, and very persistent
+yearly series (r₁ = 0.9) give 5.8–6.8%. A record also needs at least 8 years with enough months: OCO-2 GEOS
+XCO₂ (January 2015 to February 2022) holds only 7, so it is shown but not tested.
 
 ## References
 

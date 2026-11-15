@@ -8,7 +8,8 @@ fields, controlling the FDR at alpha_FDR = 2 alpha_global keeps the chance of an
 field-wide finding near alpha_global.
 
 Which cells pass depends on the region tested (the FDR is computed over its cells), and the
-map says so.  In monthly mode the map uses yearly values.
+map says so.  In the monthly views the map uses the yearly means of each cell's monthly
+anomalies, the values the regional test of those views uses.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import warnings
 import numpy as np
 from scipy import stats as sps
 
-from .stats import ALPHA, MIN_POINTS, R1_MAX, _ratio_table, ar1_variance_ratio
+from .stats import ALPHA, MIN_POINTS, R1_MAX, _ratio_table, ar1_variance_ratio, correct_r1_for_trend_many
 
 FDR_FACTOR = 2.0  # Wilks (2016): alpha_FDR = 2 * alpha_global
 
@@ -167,9 +168,8 @@ def _cell_tests_inner(
     num = np.nansum(resid[:-1] * resid[1:], axis=0)
     den = np.nansum(resid * resid, axis=0)
     pairs_ok = (valid[:-1] & valid[1:]).sum(axis=0)
-    r1_hat = num / den * (n - 1) / np.maximum(pairs_ok, 1)
-    r1 = np.where(n > 6, (n * r1_hat + 2.0) / (n - 4.0), r1_hat)
-    r1 = np.clip(np.nan_to_num(r1), 0.0, R1_MAX)
+    r1_hat = np.nan_to_num(num / den * (n - 1) / np.maximum(pairs_ok, 1))
+    r1 = np.clip(correct_r1_for_trend_many(r1_hat, n), 0.0, R1_MAX)
 
     if group is None:
         var0 = n * (n - 1) * (2 * n + 5) / 18.0

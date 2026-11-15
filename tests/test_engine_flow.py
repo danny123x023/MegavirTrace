@@ -50,8 +50,45 @@ def test_djf_belongs_to_january_year():
 def test_monthly_anomalies_remove_seasonal_cycle():
     idx, vals = monthly(trend=0.0, noise=0.01)
     s = build_series(idx, vals, "monthly")
-    assert abs(s.y.mean()) < 0.01 and s.y.std() < 0.05
-    assert s.group is not None and s.per_year == 12
+    # the chart shows monthly anomalies without the seasonal cycle
+    assert abs(s.plot_y.mean()) < 0.01 and s.plot_y.std() < 0.05
+    assert len(s.chart_labels) == idx.size and s.chart_labels[0] == "2001-01"
+
+
+def test_monthly_mode_tests_yearly_means_of_the_anomalies():
+    """Months next to each other (and the months of one El Niño year) are not independent, so the
+    monthly views are tested on yearly means; the chart still shows the months."""
+    idx, vals = monthly(trend=0.05, noise=0.5)
+    s = build_series(idx, vals, "monthly")
+    assert s.per_year == 1 and s.group is None
+    assert s.labels[0] == "2001" and len(s.labels) == 24
+    by_year = np.array(s.plot_y).reshape(24, 12).mean(axis=1)
+    np.testing.assert_allclose(s.y, by_year, atol=1e-12)
+    raw = build_series(idx, vals, "raw")
+    np.testing.assert_allclose(raw.y, s.y)  # raw mode only changes what the chart shows
+    np.testing.assert_allclose(raw.plot_y, vals)
+    # the slope matches the yearly mode's (yearly values differ only by a constant)
+    a = build_series(idx, vals, "annual")
+    np.testing.assert_allclose(np.diff(s.y), np.diff(a.y), atol=1e-9)
+
+
+def test_years_use_only_the_calendar_months_observed_here():
+    """Ocean colour has no data in polar night: years are built from the months that are observed."""
+    idx, vals = monthly(trend=0.0, noise=0.0)
+    vals = vals.copy()
+    dark = np.isin(idx % 12 + 1, [11, 12, 1, 2])
+    vals[dark] = np.nan
+    s = build_series(idx, vals, "annual")
+    assert s.months_used == tuple(range(3, 11))
+    assert len(s.y) == 24  # every year has all 8 observed months
+    np.testing.assert_allclose(s.y, np.nanmean(np.where(dark, np.nan, vals)[:12]), atol=1e-9)
+    vals2 = vals.copy()
+    vals2[np.flatnonzero(~dark)[:2]] = np.nan  # 2001 keeps 6 of its 8 observed months: below ceil(10/12 x 8) = 7
+    assert build_series(idx, vals2, "annual").labels[0] == "2002"
+    tot = build_series(idx, np.where(dark, np.nan, 10.0), "annual", agg="sum")
+    np.testing.assert_allclose(tot.y, 80.0)  # a total over the 8 observed months
+    two = np.where(np.isin(idx % 12 + 1, [6, 7]), vals, np.nan)
+    assert build_series(idx, two, "annual").y.size == 0  # 2 calendar months cannot make a year
 
 
 def test_sum_aggregation_gives_yearly_totals():

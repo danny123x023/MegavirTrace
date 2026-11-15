@@ -105,9 +105,33 @@ def test_ratio_table_extrapolates_long_records():
 
 
 def test_r1_bias_correction_is_inverse_of_bias():
-    r, n = 0.4, 25
-    biased = r - (2 + 4 * r) / n
-    assert correct_r1_for_trend(biased, n) == pytest.approx(r)
+    """The correction inverts the simulated mean estimate of exactly the engine's estimator."""
+    from megavir.engine.stats import _r1_bias_table
+
+    phi, ns, mean = _r1_bias_table()
+    for n in (8, 15, 25, 60):
+        i = list(ns).index(n)
+        for r in (0.0, 0.3, 0.6, 0.9):
+            j = int(np.argmin(np.abs(phi - r)))
+            assert correct_r1_for_trend(float(mean[i, j]), n) == pytest.approx(r, abs=0.02)
+    # beyond the table: the large-n bias (2 + 5 r) / n
+    r, n = 0.4, 400
+    assert correct_r1_for_trend(r - (2 + 5 * r) / n, n) == pytest.approx(r, abs=1e-9)
+
+
+def test_r1_estimate_is_unbiased_after_correction():
+    rng = np.random.default_rng(31)
+    n, phi = 25, 0.7
+    t = np.arange(n) + 0.5
+    est = []
+    for _ in range(1500):
+        e = rng.standard_normal(n)
+        x = np.empty(n)
+        x[0] = e[0] / np.sqrt(1 - phi**2)
+        for k in range(1, n):
+            x[k] = phi * x[k - 1] + e[k]
+        est.append(ols_trend(t, x).r1)
+    assert np.mean(est) == pytest.approx(phi, abs=0.05)
 
 
 def test_weatherhead_monthly_form_and_annual_scaling():

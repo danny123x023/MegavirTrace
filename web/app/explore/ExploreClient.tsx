@@ -163,7 +163,8 @@ export default function ExploreClient() {
                   trend={showTrend ? { line: s!.trend_line, slopeLow: result.stats.sen.ci_low, slopeHigh: result.stats.sen.ci_high, label: t("Trend (Sen's slope)") } : null}
                   zeroLine={s!.mode === "monthly"}
                 />
-                {s!.mode === "raw" && <p className="small muted">{t("Raw months are shown as measured; the statistics use monthly anomalies (each month compared with the same month in other years).")}</p>}
+                {s!.mode === "raw" && <p className="small muted">{t("Raw months are shown as measured; the statistics use the yearly means of the monthly anomalies (each month compared with the same month in other years).")}</p>}
+                {s!.mode === "monthly" && <p className="small muted">{t("The chart shows months; the statistics use their yearly means, because neighbouring months are not independent.")}</p>}
               </Panel>
             </div>
             <div className="stack">

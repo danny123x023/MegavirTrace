@@ -14,7 +14,8 @@ Conventions
 Autocorrelation
 ---------------
 The lag-1 autocorrelation r1 of the least-squares residuals is estimated, corrected for its
-small-sample bias and used twice:
+small-sample bias (measured by simulation for this exact estimator, see correct_r1_for_trend)
+and used twice:
 
 * least squares: the standard error is widened with the effective sample size
   ``n_eff = n (1 - r1) / (1 + r1)`` (Santer et al. 2000);
@@ -70,17 +71,50 @@ def lag1_autocorrelation(t: np.ndarray, x: np.ndarray, step: float) -> float:
     return num / denom
 
 
+def _r1_bias_table() -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    tab = _ratio_table()
+    if tab is None or "r1_mean" not in tab:
+        return None
+    return tab["r1_phi"], tab["r1_n"], tab["r1_mean"]
+
+
+def _invert_r1(r1_hat: np.ndarray, n: int) -> np.ndarray:
+    """r1 whose expected estimate E[r1_hat | r1, n] equals the observed r1_hat (one record length)."""
+    r1_hat = np.asarray(r1_hat, float)
+    got = _r1_bias_table()
+    if n < 6 or got is None:
+        return np.clip(r1_hat, 0.0, R1_MAX)
+    phi, ns, mean = got
+    if n > ns[-1]:
+        # beyond the table the bias is ~(2 + 5 r1) / n, so r1 = (n r1_hat + 2) / (n - 5)
+        return np.clip((n * r1_hat + 2.0) / (n - 5.0), -0.99, R1_MAX)
+    inv = 1.0 / ns.astype(float)  # decreasing
+    col = np.array([np.interp(1.0 / n, inv[::-1], mean[::-1, j]) for j in range(phi.size)])
+    return np.clip(np.interp(r1_hat, col, phi), -0.99, R1_MAX)
+
+
 def correct_r1_for_trend(r1_hat: float, n: int) -> float:
     """Undo the small-sample bias of r1 estimated from trend residuals.
 
-    E[r1_hat] ~= r1 - (2 + 4 r1) / n for residuals of a fitted straight line (van Giersbergen
-    2005), about twice the (1 + 3 r1) / n bias of a series with only its mean removed.
-    Solving for r1 gives r1 = (n r1_hat + 2) / (n - 4).
+    The lag-1 sample autocorrelation of least-squares residuals is biased low: by about
+    (2 + 5 r1) / n in long records (the (2 + 4 r1) / n of van Giersbergen 2005 for the
+    least-squares AR(1) estimator, plus r1 / n because this ratio divides by all n squared
+    residuals), and by more at high r1 in short records (at r1 = 0.9 and n = 25 the estimate
+    averages 0.56).  The mean estimate E[r1_hat | r1, n] is tabulated by simulation for exactly
+    this estimator (scripts/build_r1_bias_table.py) and inverted here.
     """
-    if n <= 6:
-        return float(np.clip(r1_hat, 0.0, R1_MAX))
-    r1 = (n * r1_hat + 2.0) / (n - 4.0)
-    return float(np.clip(r1, -0.99, R1_MAX))
+    return float(_invert_r1(np.array([r1_hat]), int(n))[0])
+
+
+def correct_r1_for_trend_many(r1_hat: np.ndarray, n: np.ndarray) -> np.ndarray:
+    """correct_r1_for_trend for many series at once (the cell map), grouped by record length."""
+    r1_hat = np.asarray(r1_hat, float)
+    n = np.asarray(n, int)
+    out = np.zeros_like(r1_hat)
+    for nn in np.unique(n):
+        sel = n == nn
+        out[sel] = _invert_r1(r1_hat[sel], int(nn))
+    return out
 
 
 def effective_n(n: int, r1: float) -> float:
