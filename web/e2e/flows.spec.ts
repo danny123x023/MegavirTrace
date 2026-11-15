@@ -104,12 +104,21 @@ test("works offline after one visit (production build)", async ({ page, context 
   await context.setOffline(false);
 });
 
-test("phone layout: nothing wider than the screen", async ({ browser }) => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await page.goto("/");
-  await expect(page.locator(".verdict h2")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-  await page.close();
+test("phone layout: nothing wider than the screen, every page link in view", async ({ browser }) => {
+  for (const width of [360, 390]) {
+    const page = await browser.newPage({ viewport: { width, height: 844 } });
+    await page.goto("/");
+    await expect(page.locator(".verdict h2")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    const links = page.getByRole("navigation", { name: "Main" }).getByRole("link");
+    await expect(links).toHaveCount(7);
+    for (const link of await links.all()) {
+      await expect(link).toBeInViewport({ ratio: 1 });
+    }
+    // the theme switch keeps a visible word on phones, and its full name
+    await expect(page.getByRole("button", { name: "Dark mode" })).toContainText("Dark");
+    await page.close();
+  }
 });
 
 test("header: full-screen layout and dark mode switches apply and persist", async ({ browser }) => {
@@ -204,5 +213,23 @@ test.describe("map base layers", () => {
     const map2 = outlines.locator("section[aria-label='Where inside the region']");
     await expect(map2.locator(".maplibregl-ctrl-attrib")).toContainText("Natural Earth");
     await expect(map2.getByText(/Zoom in to see streets/)).toHaveCount(0);
+  });
+});
+
+test.describe("ask page", () => {
+  test.use({ serviceWorkers: "block" });
+  test("the Ask button is ready before typing; an empty question gets a hint, not a request", async ({ page }) => {
+    await page.route("**/api/ai/status", (route) => route.fulfill({ json: { enabled: true, provider: "test", model: null } }));
+    let asked = 0;
+    await page.route("**/api/ai/ask", (route) => { asked++; return route.abort(); });
+    await page.goto("/ask");
+    const ask = page.getByRole("button", { name: "Ask", exact: true });
+    await expect(ask).toBeEnabled();
+    await ask.click();
+    await expect(page.locator("#q-need")).toHaveText("Type a question first (at least 3 characters).");
+    await expect(page.getByRole("textbox", { name: "Your question" })).toBeFocused();
+    await page.getByRole("textbox", { name: "Your question" }).fill("Is it warming?");
+    await expect(page.locator("#q-need")).toHaveCount(0);
+    expect(asked).toBe(0);
   });
 });

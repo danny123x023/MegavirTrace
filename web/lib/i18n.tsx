@@ -16,7 +16,7 @@ const ES: Record<string, string> = {
   // navigation and chrome
   Explore: "Explorar",
   Compare: "Comparar",
-  "Moves together": "Se mueven juntos",
+  "Related variables": "Variables relacionadas",
   "Start here": "Por dónde empezar",
   "Ask the AI": "Pregunta a la IA",
   Method: "Método",
@@ -158,6 +158,8 @@ const ES: Record<string, string> = {
   "Map view": "Vista del mapa",
   "Flat map (2D)": "Mapa plano (2D)",
   "Colour strength": "Intensidad del color",
+  "Dark": "Oscuro",
+  "Type a question first (at least 3 characters).": "Escribe primero una pregunta (al menos 3 caracteres).",
   "Zoom in": "Acercar",
   "Zoom out": "Alejar",
   "Show my location": "Mostrar mi ubicación",

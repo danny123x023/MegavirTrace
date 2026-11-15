@@ -8,7 +8,7 @@ import { type Lang, LANGS, useI18n } from "@/lib/i18n";
 const LINKS = [
   { href: "/", label: "Explore" },
   { href: "/compare", label: "Compare" },
-  { href: "/related", label: "Moves together" },
+  { href: "/related", label: "Related variables" },
   { href: "/start", label: "Start here" },
   { href: "/ask", label: "Ask the AI" },
   { href: "/methods", label: "Method" },
@@ -107,11 +107,12 @@ export default function Nav() {
             {LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
           </select>
         </span>
-        <button type="button" className="tool-btn" aria-pressed={dark} onClick={toggleDark}>
+        <button type="button" className="tool-btn" aria-label={t("Dark mode")} aria-pressed={dark} onClick={toggleDark}>
           <MoonIcon />
           <span className="tool-label">{t("Dark mode")}</span>
+          <span className="tool-label-short">{t("Dark")}</span>
         </button>
-        <button type="button" className="tool-btn layout-toggle" aria-pressed={wide} onClick={toggleLayout}>
+        <button type="button" className="tool-btn layout-toggle" aria-label={t("Full screen")} aria-pressed={wide} onClick={toggleLayout}>
           <ExpandIcon />
           <span className="tool-label">{t("Full screen")}</span>
         </button>

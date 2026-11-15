@@ -39,11 +39,17 @@ export default function AskPage() {
   const [tutor, setTutor] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [needQuestion, setNeedQuestion] = useState(false);
 
   useEffect(() => { apiGet<typeof status>("/ai/status").then(setStatus).catch(() => setStatus({ enabled: false, provider: "none", model: null })); }, []);
 
   async function ask(question: string) {
-    if (question.trim().length < 3) return;
+    if (question.trim().length < 3) {
+      setNeedQuestion(true);
+      document.getElementById("q")?.focus();
+      return;
+    }
+    setNeedQuestion(false);
     setBusy(true);
     const history = turns.flatMap((t) => [
       { role: "user", content: t.q },
@@ -77,18 +83,24 @@ export default function AskPage() {
 
       <section className="card" aria-label="Your question">
         <label htmlFor="q" className="label" style={{ fontWeight: 600 }}>Your question</label>
-        <textarea id="q" value={q} maxLength={600} onChange={(e) => setQ(e.target.value)} placeholder="For example: Is rainfall in the Sahel changing?" />
+        <textarea
+          id="q" value={q} maxLength={600} placeholder="For example: Is rainfall in the Sahel changing?"
+          aria-describedby={needQuestion ? "q-need" : undefined} aria-invalid={needQuestion || undefined}
+          onChange={(e) => { setQ(e.target.value); if (e.target.value.trim().length >= 3) setNeedQuestion(false); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask(q); }}
+        />
+        {needQuestion && <p id="q-need" className="small field-hint" role="alert">{t("Type a question first (at least 3 characters).")}</p>}
         <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
           <label className="row small">
             <input type="checkbox" checked={tutor} onChange={(e) => setTutor(e.target.checked)} />
             Tutor mode: guide me with questions instead of explaining
           </label>
-          <button type="button" className="primary" disabled={busy || !status?.enabled || q.trim().length < 3} onClick={() => ask(q)}>
+          <button type="button" className="primary" disabled={busy || status?.enabled === false} onClick={() => ask(q)}>
             {busy ? t("Running the analyses…") : t("Ask")}
           </button>
         </div>
         <div className="chip-list" style={{ marginTop: 10 }}>
-          {EXAMPLES.map((e) => <button key={e} type="button" className="chip" disabled={!status?.enabled || busy} onClick={() => ask(e)}>{e}</button>)}
+          {EXAMPLES.map((e) => <button key={e} type="button" className="chip" disabled={status?.enabled === false || busy} onClick={() => ask(e)}>{e}</button>)}
         </div>
       </section>
 

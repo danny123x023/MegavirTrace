@@ -17,7 +17,7 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
   or use the location button. The trend colours fade as you zoom in and have a strength slider.
 - **Compare:** tests whether two regions' trends really differ, using the trend of their difference series.
   It also finds pairs of preset regions with opposite trends.
-- **Moves together:** do two variables rise and fall together in one place, possibly with a delay? Seasonal
+- **Related variables:** do two variables rise and fall together in one place, possibly with a delay? Seasonal
   cycles and trends are removed first, and significance allows for month-to-month memory and for the lags
   searched. Always labelled "related, not caused by".
 - **Where do I start?** suggests variables by place type and curiosity. It can also test every variable for
