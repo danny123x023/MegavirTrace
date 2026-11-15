@@ -5,6 +5,7 @@ import json
 import numpy as np
 import pytest
 
+from megavir.catalog import DATASETS, THEMES, VARIABLES
 from tests.conftest import ORIGIN
 
 pytestmark = pytest.mark.db
@@ -13,11 +14,11 @@ pytestmark = pytest.mark.db
 def test_health_and_catalog(client):
     assert client.get("/health").json()["ok"]
     cat = client.get("/variables").json()
-    assert len(cat["variables"]) == 16 and len(cat["themes"]) == 7
+    assert len(cat["variables"]) == len(VARIABLES) >= 31 and len(cat["themes"]) == len(THEMES) == 8
     assert all(v["data"] and v["data"]["kind"] == "synthetic" for v in cat["variables"])
-    assert len(cat["planned"]) == 6
+    assert cat["planned"] == []
     ds = client.get("/datasets").json()
-    assert len(ds["available"]) == 11
+    assert len(ds["available"]) == len(DATASETS) >= 23
 
 
 def test_place_search_and_outline(client):
@@ -85,13 +86,16 @@ def test_compare_and_opposites(client):
     assert d["slope_per_decade"] > 0  # the planted trend falls from west to east
     assert "minus" in c["verdict"]["sentences"][0]
     o = client.get("/analysis/opposites", params={"variable": "air_temp"}).json()
-    assert "pairs" in o
+    assert "pairs" in o and o["mode"] == "annual" and "false-discovery" in o["note"]
+    assert all(r["q"] <= 0.05 for r in o["rising"] + o["falling"])  # control across the regions tested
+    gappy = client.get("/analysis/opposites", params={"variable": "land_water"}).json()
+    assert gappy["mode"] == "monthly"  # each variable's own view, as in Explore
 
 
 def test_scan_controls_false_discoveries(client):
     s = client.post("/analysis/scan", json={"region": {"place": "country:TST"}}, headers=ORIGIN).json()
     rows = [r for r in s["results"] if "q" in r]
-    assert len(rows) == 16
+    assert len(rows) == len(VARIABLES)
     assert all(r["q"] >= 0 for r in rows)
 
 
@@ -180,9 +184,14 @@ def _fake_call(answer_fn):
 def test_ai_answer_with_checked_numbers(client, fake_ai, monkeypatch):
     def good(card):
         rate = card["per_decade"]["sen"]
+        if card["significant"]:
+            head, expl = f"Testland is warming by about {rate:.2f} °C per decade.", "Both tests agree."
+        else:  # an honest answer for a trend the tests do not support
+            head = f"Testland shows no clear trend; the best estimate is {rate:+.2f} °C per decade."
+            expl = "The ups and downs could explain it."
         return {
-            "headline": f"Testland is warming by about {rate:.2f} °C per decade.",
-            "explanation": "Both tests agree. The data are synthetic.",
+            "headline": head,
+            "explanation": expl + " The data are synthetic.",
             "analysis_ids": [card["analysis_id"]],
             "follow_up_questions": [],
         }
@@ -274,3 +283,24 @@ def test_gappy_records_default_to_monthly(client):
         "/analysis/trend", json={"variable": "air_temp", "region": {"place": "country:TST"}}, headers=ORIGIN
     )
     assert r.json()["series"]["mode"] == "annual"
+
+
+def test_moves_together_endpoint(client):
+    body = {
+        "variable_a": "air_temp",
+        "variable_b": "daily_high",
+        "region": {"place": "country:TST"},
+        "max_lag": 6,
+    }
+    r = client.post("/analysis/related", json=body, headers=ORIGIN)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    rel = d["relationship"]
+    assert len(rel["lags"]) == 13 and rel["n_lags_tested"] == 13
+    assert d["verdict"]["caveats"][0].startswith("SYNTHETIC DATA")
+    assert any("not caused by" in c for c in d["verdict"]["caveats"])
+    csv = client.get(f"/reports/{d['id']}/export", params={"format": "csv"})
+    assert csv.status_code == 200 and b"lag_months" in csv.content
+    assert client.get(f"/reports/{d['id']}/export", params={"format": "pdf"}).status_code == 422
+    same = client.post("/analysis/related", json={**body, "variable_b": "air_temp"}, headers=ORIGIN)
+    assert same.status_code == 422

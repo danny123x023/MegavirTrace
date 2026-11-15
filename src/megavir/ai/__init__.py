@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -26,7 +27,8 @@ from megavir.catalog import VARIABLES
 from megavir.config import settings
 from megavir.store import connect
 
-from .numbers import allowed_numbers, check_text
+from . import config
+from .numbers import Facts, add_ratios, check_text, facts_from
 
 log = logging.getLogger("megavir.ai")
 
@@ -34,7 +36,6 @@ BASE_URLS = {
     "zai": "https://api.z.ai/api/paas/v4",
     "openai": "https://api.openai.com/v1",
 }
-DEFAULT_MODELS = {"anthropic": "claude-opus-5-5"}
 MAX_TOOL_ROUNDS = 6
 
 _hourly: SlidingWindow | None = None
@@ -53,12 +54,13 @@ def _limiter() -> SlidingWindow:
 
 
 def _provider() -> str:
-    p = (settings().ai_provider or "none").lower()
-    return p if p in ("zai", "openai", "openai_compatible", "anthropic") and settings().ai_api_key else "none"
+    """The active service (Admin panel, else .env), or "none"."""
+    return config.active()
 
 
 def _model() -> str:
-    return settings().ai_model or DEFAULT_MODELS.get(_provider(), "")
+    p = _provider()
+    return config.provider(p)["model"] if p != "none" else ""
 
 
 def status() -> dict:
@@ -120,8 +122,13 @@ def _gate(ip: str) -> str | None:
 
 REGION_SCHEMA = {
     "type": "object",
-    "description": "A place id from find_places (e.g. 'country:BRA', 'admin1:US-TX', 'preset:sahel'), or a box.",
+    "description": "The place: simplest is place_name (looked up for you). Or a place id from find_places "
+    "(e.g. 'country:BRA', 'admin1:US-TX', 'preset:sahel'), or a box.",
     "properties": {
+        "place_name": {
+            "type": "string",
+            "description": "A place name as the visitor wrote it, e.g. 'Sahel', 'Texas', 'Brazil', 'Tokyo'.",
+        },
         "place": {"type": "string"},
         "bbox": {
             "type": "array",
@@ -132,15 +139,24 @@ REGION_SCHEMA = {
     "additionalProperties": False,
 }
 
+# the variable ids are in the tools themselves, so the AI does not need a round trip to look them up
+VARIABLE_SCHEMA = {
+    "type": "string",
+    "enum": list(VARIABLES),
+    "description": "; ".join(f"{v.id}: {v.name}" for v in VARIABLES.values()),
+}
+
 TOOLS = [
     {
         "name": "list_variables",
-        "description": "List the NASA variables MegavirTrace can analyse, with units, sources and record spans.",
+        "description": "Units, sources and record spans of every variable (only if you need those; the ids are "
+        "listed in the analysis tools).",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "find_places",
-        "description": "Search places (countries, states, cities, preset regions) by name. Returns ids to use in analyses.",
+        "description": "Search places by name (countries, states, cities, preset regions). Only needed when a "
+        "place_name was not found or is ambiguous: the analysis tools look names up themselves.",
         "input_schema": {
             "type": "object",
             "properties": {"query": {"type": "string"}},
@@ -151,11 +167,12 @@ TOOLS = [
     {
         "name": "run_trend_analysis",
         "description": "Run the deterministic trend engine for one variable in one region. Returns an analysis id and the stored statistics. "
-        "mode: annual (default), season (with season DJF/MAM/JJA/SON) or monthly.",
+        "mode: leave it out to use the variable's usual view (yearly for most, monthly for gappy records); "
+        "or annual, season (with season DJF/MAM/JJA/SON) or monthly. Monthly views are tested on yearly means.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "variable": {"type": "string"},
+                "variable": VARIABLE_SCHEMA,
                 "region": REGION_SCHEMA,
                 "mode": {"type": "string", "enum": ["annual", "season", "monthly"]},
                 "season": {"type": "string", "enum": ["DJF", "MAM", "JJA", "SON"]},
@@ -172,7 +189,7 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "variable": {"type": "string"},
+                "variable": VARIABLE_SCHEMA,
                 "region_a": REGION_SCHEMA,
                 "region_b": REGION_SCHEMA,
                 "mode": {"type": "string", "enum": ["annual", "season", "monthly"]},
@@ -255,76 +272,134 @@ def _r(v, sig: int = 4):
     return v
 
 
+def _region(conn, spec, used: list[str]) -> dict:
+    """A region from the AI for the engine: a place name is looked up here (no extra AI round trip).
+
+    The place each name resolved to is noted in ``used`` so the AI can check it was the one meant."""
+    spec = dict(spec) if isinstance(spec, dict) else {}
+    name = str(spec.pop("place_name", "") or "").strip()
+    if spec.get("place") or spec.get("bbox"):
+        return spec
+    if not name:
+        raise service.AnalysisError("give the place: region.place_name, a place id or a box")
+    from megavir.api.main import places_search
+
+    hits = places_search(q=name[:80], limit=1)["results"]
+    if not hits:
+        raise service.AnalysisError(
+            f"no place called {name!r} was found; try find_places with another spelling"
+        )
+    hit = hits[0]
+    used.append(
+        f"{name} -> {hit['name']}"
+        + (f" ({hit['context']})" if hit.get("context") else "")
+        + f" [{hit['id']}]"
+    )
+    return {"place": hit["id"]}
+
+
+def _place_label(conn, spec: dict) -> str:
+    if spec.get("place"):
+        r = conn.execute("SELECT name FROM place WHERE id = %s", (spec["place"],)).fetchone()
+        return r["name"] if r else spec["place"]
+    return "the box you drew" if spec.get("bbox") else ""
+
+
 def run_tool(name: str, args: dict, ctx: dict) -> dict:
     lang = ctx["lang"]
     with connect() as conn:
+        used: list[str] = []
         try:
-            if name == "list_variables":
-                cat = service.catalog_with_status(conn)
-                return {
-                    "variables": [
-                        {
-                            "id": v["id"],
-                            "name": v["name"],
-                            "theme": v["theme"],
-                            "units": v["units"],
-                            "source": v["source_badge"],
-                            "loaded": bool(v["data"]),
-                            "data_kind": (v["data"] or {}).get("kind"),
-                            "record": [
-                                (v["data"] or {}).get("first_month"),
-                                (v["data"] or {}).get("last_month"),
-                            ],
-                        }
-                        for v in cat["variables"]
-                    ]
-                }
-            if name == "find_places":
-                from megavir.api.main import places_search
-
-                return places_search(q=str(args.get("query", ""))[:80], limit=8)
-            if name == "run_trend_analysis":
-                r = service.run_trend(conn, {**args, "cell_map": False, "lang": lang})
-                ctx["analyses"][r["id"]] = r
-                return _card(r)
-            if name == "compare_regions":
-                r = service.run_compare(conn, {**args, "lang": lang})
-                ctx["analyses"][r["id"]] = r
-                return _card(r)
-            if name == "scan_region":
-                s = service.run_scan(conn, {"region": args.get("region") or {}, "lang": lang})
-                for row in s["results"]:
-                    if row.get("analysis_id"):
-                        rep = service.get_report(conn, row["analysis_id"])
-                        if rep:
-                            ctx["analyses"][row["analysis_id"]] = rep["result"]
-                return {
-                    "region": s["region"]["name"],
-                    "results": [
-                        {
-                            k: _r(v)
-                            for k, v in row.items()
-                            if k
-                            in (
-                                "variable",
-                                "name",
-                                "per_decade",
-                                "units",
-                                "direction",
-                                "significant",
-                                "q",
-                                "passes_fdr",
-                                "headline",
-                                "analysis_id",
-                                "error",
-                            )
-                        }
-                        for row in s["results"]
+            for key in ("region", "region_a", "region_b"):
+                if key in args:
+                    args = {**args, key: _region(conn, args[key], used)}
+            var = VARIABLES.get(str(args.get("variable", "")))
+            _emit(
+                ctx,
+                {
+                    "step": "tool",
+                    "tool": name,
+                    "variable": var.local(lang)["name"] if var else None,
+                    "places": [
+                        _place_label(conn, args[k]) for k in ("region", "region_a", "region_b") if k in args
                     ],
-                    "note": s["note"],
-                }
+                    "query": str(args.get("query", ""))[:80] or None,
+                },
+            )
+            out = _run_tool(conn, name, args, ctx, lang)
+            if used and isinstance(out, dict):
+                out = {"places_used": used, **out}
+            return out
         except service.AnalysisError as e:
-            return {"error": str(e)}
+            return {"error": str(e), **({"places_used": used} if used else {})}
+
+
+def _run_tool(conn, name: str, args: dict, ctx: dict, lang: str) -> dict:
+    """The tools themselves (regions already resolved)."""
+    if name == "list_variables":
+        cat = service.catalog_with_status(conn)
+        return {
+            "variables": [
+                {
+                    "id": v["id"],
+                    "name": v["name"],
+                    "theme": v["theme"],
+                    "units": v["units"],
+                    "source": v["source_badge"],
+                    "loaded": bool(v["data"]),
+                    "data_kind": (v["data"] or {}).get("kind"),
+                    "record": [
+                        (v["data"] or {}).get("first_month"),
+                        (v["data"] or {}).get("last_month"),
+                    ],
+                }
+                for v in cat["variables"]
+            ]
+        }
+    if name == "find_places":
+        from megavir.api.main import places_search
+
+        return places_search(q=str(args.get("query", ""))[:80], limit=8)
+    if name == "run_trend_analysis":
+        r = service.run_trend(conn, {**args, "cell_map": False, "lang": lang})
+        ctx["analyses"][r["id"]] = r
+        return _card(r)
+    if name == "compare_regions":
+        r = service.run_compare(conn, {**args, "lang": lang})
+        ctx["analyses"][r["id"]] = r
+        return _card(r)
+    if name == "scan_region":
+        s = service.run_scan(conn, {"region": args.get("region") or {}, "lang": lang})
+        for row in s["results"]:
+            if row.get("analysis_id"):
+                rep = service.get_report(conn, row["analysis_id"])
+                if rep:
+                    ctx["analyses"][row["analysis_id"]] = rep["result"]
+        return {
+            "region": s["region"]["name"],
+            "results": [
+                {
+                    k: _r(v)
+                    for k, v in row.items()
+                    if k
+                    in (
+                        "variable",
+                        "name",
+                        "per_decade",
+                        "units",
+                        "direction",
+                        "significant",
+                        "q",
+                        "passes_fdr",
+                        "headline",
+                        "analysis_id",
+                        "error",
+                    )
+                }
+                for row in s["results"]
+            ],
+            "note": s["note"],
+        }
     return {"error": f"unknown tool {name}"}
 
 
@@ -332,12 +407,13 @@ SYSTEM = """You are the AI Earth scientist inside MegavirTrace, a tool that tell
 
 Rules you must follow:
 - You never compute anything. All numbers come from the tools, which run MegavirTrace's deterministic trend engine. Copy numbers exactly as the tools give them (you may round to fewer digits). Never convert units, never calculate differences, totals, percentages or per-century values yourself.
-- Call run_trend_analysis, compare_regions or scan_region before saying anything about a trend. Use find_places to get a place id first. If a tool returns an error, say what is missing instead of guessing.
-- "Significant" means both corrected tests agree. Do not call a trend significant unless the tool says significant: true. A non-significant result is still interesting: say how many more years would be needed when the tool gives it.
-- A trend is not a cause. Never claim a cause; you may say what scientists commonly consider, marked clearly as context, not as a finding.
+- Call run_trend_analysis, compare_regions or scan_region before saying anything about a trend. Name the place directly (region.place_name, as the visitor wrote it); the tool looks it up and tells you which place it used. Use find_places only if a name was not found or the place used is not the one meant. If the question needs several analyses, ask for all of them at once, in the same turn. If a tool returns an error, say what is missing instead of guessing.
+- "Significant" means both corrected tests agree. Use the word only in that sense, and only when the tool says significant: true. Say a place is rising, falling, warming, drying and so on only when the trend is significant; otherwise say there is no clear trend and give the best estimate as an estimate. A non-significant result is still interesting: say how many more years would be needed when the tool gives it.
+- A trend is not a cause. Do not explain why something changed, and do not add facts that are not in the tool results (causes, events, numbers or years from memory). You may say that a trend alone cannot show the cause.
+- Every number and year you write, also in follow_up_questions, is checked against the tool results; a number that is not there, or a direction the tests do not support, means your answer is replaced by the plain computed verdict.
 - If the data are test or synthetic data, say so plainly.
 - Write in plain, everyday words for someone with no science background. Short sentences. Answer in the visitor's language: {lang}.
-- Final answer: JSON with headline (one sentence), explanation (2-5 short paragraphs), analysis_ids (the ids you used), follow_up_questions (up to 3)."""
+- Keep it short: the page also shows each result card with its numbers. Final answer: JSON with headline (one sentence), explanation (one or two short paragraphs, at most 120 words in total), analysis_ids (the ids you used), follow_up_questions (up to 3 short questions)."""
 
 TUTOR = """
 Tutor mode: you are a Socratic tutor. Instead of explaining the answer outright, guide the learner with questions that help them read the chart and the statistics themselves (for example: "What does the 95% range tell you if it crosses zero?"). Still run the analyses so your hints rest on real results, and still follow every rule above. Put your guiding questions in follow_up_questions."""
@@ -352,14 +428,33 @@ class ProviderError(RuntimeError):
     pass
 
 
-def _anthropic_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
+def _emit(ctx: dict, event: dict) -> None:
+    """Tell the page what is happening (Ask page progress); never fails the answer."""
+    cb = ctx.get("progress")
+    if cb:
+        try:
+            cb(event)
+        except Exception:  # noqa: BLE001
+            log.debug("progress callback failed", exc_info=True)
+
+
+def _model_round(ctx: dict, started: float) -> None:
+    ctx.setdefault("timing", {"model_s": [], "tools": []})["model_s"].append(round(time.time() - started, 2))
+
+
+def _tool_timed(name: str, args: dict, ctx: dict) -> dict:
+    t0 = time.time()
+    out = run_tool(name, args, ctx)
+    ctx.setdefault("timing", {"model_s": [], "tools": []})["tools"].append([name, round(time.time() - t0, 2)])
+    return out
+
+
+def _anthropic_loop(messages: list[dict], system: str, ctx: dict, cfg: dict) -> tuple[dict, int, int]:
     """Anthropic Messages API (official SDK): manual tool loop, structured final answer."""
     import anthropic
 
-    client = anthropic.Anthropic(
-        api_key=settings().ai_api_key, timeout=settings().ai_timeout_s, max_retries=1
-    )
-    model = _model()
+    client = anthropic.Anthropic(api_key=cfg["key"], timeout=settings().ai_timeout_s, max_retries=1)
+    model = cfg["model"]
     tin = tout = 0
     tools = [{**t, "strict": True} for t in TOOLS]
     kwargs = {}
@@ -372,7 +467,9 @@ def _anthropic_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict,
     ):
         # server-side fallback on a policy decline (re-runs the same request on a fallback model)
         kwargs = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
-    for _ in range(MAX_TOOL_ROUNDS + 1):
+    for rnd in range(MAX_TOOL_ROUNDS + 1):
+        _emit(ctx, {"step": "thinking", "round": rnd + 1})
+        started = time.time()
         try:
             resp = client.beta.messages.create(
                 model=model,
@@ -387,6 +484,7 @@ def _anthropic_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict,
             raise ProviderError(f"Anthropic API error {e.status_code}") from e
         except anthropic.APIConnectionError as e:
             raise ProviderError("Anthropic API not reachable") from e
+        _model_round(ctx, started)
         tin += getattr(resp.usage, "input_tokens", 0) or 0
         tout += getattr(resp.usage, "output_tokens", 0) or 0
         if resp.stop_reason == "refusal":
@@ -398,7 +496,7 @@ def _anthropic_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict,
             messages.append({"role": "assistant", "content": resp.content})
             results = []
             for tu in tool_uses:
-                out = run_tool(tu.name, tu.input if isinstance(tu.input, dict) else {}, ctx)
+                out = _tool_timed(tu.name, tu.input if isinstance(tu.input, dict) else {}, ctx)
                 results.append(
                     {
                         "type": "tool_result",
@@ -417,14 +515,13 @@ def _anthropic_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict,
     raise ProviderError("too many tool rounds")
 
 
-def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
+def _openai_loop(messages: list[dict], system: str, ctx: dict, p: str, cfg: dict) -> tuple[dict, int, int]:
     """OpenAI-style chat completions (Z.ai GLM, OpenAI or a compatible service)."""
-    p = _provider()
-    base = (settings().ai_base_url or BASE_URLS.get(p, "")).rstrip("/")
+    base = (cfg["base_url"] or BASE_URLS.get(p, "")).rstrip("/")
     if not base.startswith("https://"):
         raise ProviderError("the AI service address must be https")
     url = base + "/chat/completions"
-    headers = {"Authorization": f"Bearer {settings().ai_api_key}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {cfg['key']}", "Content-Type": "application/json"}
     tools = [
         {
             "type": "function",
@@ -435,20 +532,25 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
     msgs = [{"role": "system", "content": system}, *messages]
     tin = tout = 0
     with httpx.Client(timeout=settings().ai_timeout_s) as client:
-        for _ in range(MAX_TOOL_ROUNDS + 1):
+        for rnd in range(MAX_TOOL_ROUNDS + 1):
+            _emit(ctx, {"step": "thinking", "round": rnd + 1})
+            started = time.time()
             body = {
-                "model": _model(),
+                "model": cfg["model"],
                 "messages": msgs,
                 "tools": tools,
                 "tool_choice": "auto",
                 "max_tokens": settings().ai_max_tokens,
             }
+            if p == "zai":  # GLM's step-by-step "thinking" is slow and eats the token budget
+                body["thinking"] = {"type": "enabled" if settings().ai_thinking else "disabled"}
             try:
                 r = client.post(url, headers=headers, json=body)
             except httpx.HTTPError as e:
                 raise ProviderError("AI service not reachable") from e
             if r.status_code >= 400:
                 raise ProviderError(f"AI service error {r.status_code}")
+            _model_round(ctx, started)
             data = r.json()
             usage = data.get("usage") or {}
             tin += int(usage.get("prompt_tokens") or 0)
@@ -464,7 +566,7 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
                         args = json.loads(fn.get("arguments") or "{}")
                     except json.JSONDecodeError:
                         args = {}
-                    out = run_tool(fn.get("name", ""), args if isinstance(args, dict) else {}, ctx)
+                    out = _tool_timed(fn.get("name", ""), args if isinstance(args, dict) else {}, ctx)
                     msgs.append(
                         {
                             "role": "tool",
@@ -480,6 +582,11 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
                 parsed = json.loads(text[text.find("{") : text.rfind("}") + 1])
             except (json.JSONDecodeError, ValueError) as e:
                 raise ProviderError("the answer was not valid JSON") from e
+            # some models (GLM) give the explanation as a list of paragraphs
+            if isinstance(parsed.get("explanation"), list) and all(
+                isinstance(x, str) for x in parsed["explanation"]
+            ):
+                parsed["explanation"] = "\n\n".join(parsed["explanation"])
             for k in ("headline", "explanation"):
                 if not isinstance(parsed.get(k), str):
                     raise ProviderError("the answer is missing fields")
@@ -489,10 +596,87 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
     raise ProviderError("too many tool rounds")
 
 
+def _call_one(p: str, messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
+    cfg = config.provider(p)
+    if p == "anthropic":
+        return _anthropic_loop(messages, system, ctx, cfg)
+    return _openai_loop(messages, system, ctx, p, cfg)
+
+
 def _call(messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
-    if _provider() == "anthropic":
-        return _anthropic_loop(messages, system, ctx)
-    return _openai_loop(messages, system, ctx)
+    """Ask the active service; if it fails and the panel allows it, the other one takes over.
+
+    Records which service and model answered in ctx["served_by"]."""
+    p = _provider()
+    first = list(messages)  # the loops append to the list they get
+    try:
+        out = _call_one(p, messages, system, ctx)
+        ctx["served_by"] = {"provider": p, "model": config.provider(p)["model"]}
+        return out
+    except ProviderError as e:
+        other = config.fallback()
+        if not other:
+            raise
+        log.warning("ai provider %s failed (%s); trying %s", p, e, other)
+        out = _call_one(other, list(first), system, ctx)
+        ctx["served_by"] = {"provider": other, "model": config.provider(other)["model"], "after": f"{p}: {e}"}
+        return out
+
+
+def test_key(p: str, key: str | None = None, model: str | None = None) -> dict:
+    """Check a key (the saved one, or a new one before saving) with the service itself.
+
+    Claude: looks up the model (no tokens used).  Z.ai: a one-token request."""
+    cfg = config.provider(p)
+    key = key or cfg["key"]
+    model = model or cfg["model"]
+    if not key:
+        return {"ok": False, "detail": "No key is set for this service."}
+    if not model:
+        return {"ok": False, "detail": "Choose a model first."}
+    if p == "anthropic":
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=key, timeout=20.0, max_retries=0)
+        try:
+            m = client.models.retrieve(model)
+        except anthropic.AuthenticationError:
+            return {"ok": False, "detail": "Anthropic did not accept this key."}
+        except anthropic.PermissionDeniedError:
+            return {"ok": False, "detail": f"This key may not use {model}."}
+        except anthropic.NotFoundError:
+            return {"ok": False, "detail": f"The key works, but Anthropic has no model called {model}."}
+        except anthropic.RateLimitError:
+            return {"ok": True, "detail": "Anthropic accepted the key (it is rate-limited just now)."}
+        except anthropic.APIStatusError as e:
+            return {"ok": False, "detail": f"Anthropic answered with error {e.status_code}."}
+        except anthropic.APIConnectionError:
+            return {"ok": False, "detail": "Anthropic could not be reached from the server."}
+        return {"ok": True, "detail": f"Anthropic accepted the key; {m.display_name} is available."}
+    if p == "zai":
+        body = {
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+            "thinking": {"type": "disabled"},
+        }
+        try:
+            r = httpx.post(
+                BASE_URLS["zai"] + "/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json=body,
+                timeout=30.0,
+            )
+        except httpx.HTTPError:
+            return {"ok": False, "detail": "Z.ai could not be reached from the server."}
+        if r.status_code == 200:
+            return {"ok": True, "detail": f"Z.ai accepted the key; {model} answered."}
+        if r.status_code in (401, 403):
+            return {"ok": False, "detail": "Z.ai did not accept this key."}
+        if r.status_code == 429:
+            return {"ok": True, "detail": "Z.ai accepted the key (it is rate-limited just now)."}
+        return {"ok": False, "detail": f"Z.ai answered with error {r.status_code} (check the model name)."}
+    return {"ok": False, "detail": "This service is set in .env and cannot be checked here."}
 
 
 # --------------------------------------------------------------------------------------
@@ -500,22 +684,51 @@ def _call(messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]
 # --------------------------------------------------------------------------------------
 
 
+def _name_forms(name: str) -> list[str]:
+    """'the Arctic (north of 66.5°N)' -> the full name, 'the Arctic', 'Arctic'."""
+    out = [name]
+    short = re.sub(r"\s*\(.*?\)\s*", " ", name).strip()
+    out.append(short)
+    for article in ("the ", "el ", "la ", "los ", "las "):
+        if short.lower().startswith(article):
+            out.append(short[len(article) :])
+    return [n for n in dict.fromkeys(out) if len(n) >= 3]
+
+
 def _directions(analyses: dict) -> list[dict]:
     out = []
     for r in analyses.values():
         if r["kind"] == "trend":
-            names = [r["region"]["name"], r["variable"]["name"].split(" (")[0]]
-            out.append({"names": names, "direction": r["stats"]["direction"]})
+            var = r["variable"]
+            names = _name_forms(r["region"]["name"]) + _name_forms(var["name"])
+            es = (var.get("i18n") or {}).get("es") or {}
+            if es.get("name"):
+                names += _name_forms(es["name"])
+            out.append(
+                {
+                    "names": names,
+                    "direction": r["stats"]["direction"],
+                    "significant": bool(r["stats"].get("significant")),
+                    "status": r["verdict"].get("status"),
+                }
+            )
     return out
 
 
 def verify(answer: dict, analyses: dict, lang: str) -> dict:
+    """Check every number and direction in the answer, follow-up questions included (tutor mode
+    puts its guidance there), against the analyses it cites."""
     cited = [a for a in answer.get("analysis_ids", []) if a in analyses] or list(analyses)
-    allowed: list[float] = []
+    facts = Facts()
     for aid in cited:
-        allowed += allowed_numbers(analyses[aid])
-    text = f"{answer.get('headline', '')}\n{answer.get('explanation', '')}"
-    res = check_text(text, allowed, _directions({a: analyses[a] for a in cited}), lang)
+        facts.extend(facts_from(analyses[aid]))
+    add_ratios(facts)
+    questions = answer.get("follow_up_questions") or []
+    text = "\n".join(
+        [str(answer.get("headline", "")), str(answer.get("explanation", ""))]
+        + [str(q) for q in questions if isinstance(q, str)]
+    )
+    res = check_text(text, facts, _directions({a: analyses[a] for a in cited}), lang)
     return {
         "ok": res.ok and bool(cited),
         "unmatched_numbers": res.unmatched,
@@ -544,11 +757,24 @@ def _public_card(r: dict) -> dict:
     return {"analysis_id": r["id"], "kind": r["kind"], "card": _card(r)}
 
 
-def ask(question: str, lang: str, mode: str, history: list[dict], ip: str) -> dict:
+def _timing(ctx: dict, t0: float) -> dict:
+    tm = ctx.get("timing", {"model_s": [], "tools": []})
+    out = {
+        "total_s": round(time.time() - t0, 1),
+        "ai_calls": len(tm["model_s"]),
+        "ai_s": round(sum(tm["model_s"]), 1),
+        "per_call_s": tm["model_s"],
+        "tools": tm["tools"],
+    }
+    log.info("ai timing %s", json.dumps(out))
+    return out
+
+
+def ask(question: str, lang: str, mode: str, history: list[dict], ip: str, progress=None) -> dict:
     reason = _gate(ip)
     if reason:
         return {"mode": "unavailable", "reason": reason, "answer": None, "analyses": []}
-    ctx = {"lang": lang, "analyses": {}}
+    ctx = {"lang": lang, "analyses": {}, "progress": progress}
     system = SYSTEM.format(lang=lang) + (TUTOR if mode == "tutor" else "")
     messages = []
     for h in history[-6:]:
@@ -578,6 +804,7 @@ def ask(question: str, lang: str, mode: str, history: list[dict], ip: str) -> di
             "analyses": [],
             "suggestions": answer.get("follow_up_questions", [])[:3],
         }
+    _emit(ctx, {"step": "check"})
     check = verify(answer, ctx["analyses"], lang)
     if not check["ok"]:
         _record("fallback", tin, tout)
@@ -586,16 +813,19 @@ def ask(question: str, lang: str, mode: str, history: list[dict], ip: str) -> di
             "The AI's explanation did not match the computed numbers, so it is not shown. Here are the computed results.",
         )
         out["check"] = check
+        out["timing"] = _timing(ctx, t0)
         return out
     _record("answered", tin, tout)
     return {
+        "timing": _timing(ctx, t0),
+        "tokens": {"input": tin, "output": tout},
         "mode": "answered",
         "answer": {k: answer.get(k) for k in ("headline", "explanation", "follow_up_questions")},
         "check": check,
         "analyses": [_public_card(ctx["analyses"][a]) for a in check["cited"]],
         "seconds": round(time.time() - t0, 1),
-        "provider": _provider(),
-        "model": _model(),
+        "provider": ctx.get("served_by", {}).get("provider", _provider()),
+        "model": ctx.get("served_by", {}).get("model", _model()),
     }
 
 

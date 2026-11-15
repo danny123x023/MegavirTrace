@@ -1,10 +1,6 @@
-import { Suspense } from "react";
-import ExploreClient from "./ExploreClient";
+import Landing from "./Landing";
 
+// The landing page.  Explore lives at /explore; old "/?v=…" links are redirected there (next.config.ts).
 export default function Page() {
-  return (
-    <Suspense fallback={<p className="spinner-note">Loading…</p>}>
-      <ExploreClient />
-    </Suspense>
-  );
+  return <Landing />;
 }

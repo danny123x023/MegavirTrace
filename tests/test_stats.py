@@ -19,13 +19,12 @@ from megavir.engine.stats import (
     years_to_detect,
 )
 
-RNG = np.random.default_rng(2026)
-
 
 @pytest.mark.parametrize("n", [10, 23, 40])
 def test_uncorrected_mann_kendall_matches_pymannkendall(n):
+    rng = np.random.default_rng(2026)  # own generator: results do not depend on test order
     for _ in range(5):
-        y = np.round(RNG.normal(size=n) + 0.02 * np.arange(n), 1)  # rounding creates ties
+        y = np.round(rng.normal(size=n) + 0.02 * np.arange(n), 1)  # rounding creates ties
         t = np.arange(n, dtype=float)
         ours = mann_kendall(t, y)
         ref = pmk.original_test(y)
@@ -38,8 +37,9 @@ def test_uncorrected_mann_kendall_matches_pymannkendall(n):
 
 
 def test_seasonal_mann_kendall_matches_pymannkendall():
+    rng = np.random.default_rng(2026)  # own generator: results do not depend on test order
     years = 15
-    y = RNG.normal(size=12 * years) + np.tile(np.sin(np.arange(12)), years)
+    y = rng.normal(size=12 * years) + np.tile(np.sin(np.arange(12)), years)
     t = np.arange(12 * years) / 12.0
     grp = np.arange(12 * years) % 12
     ours = mann_kendall(t, y, group=grp)
@@ -51,9 +51,10 @@ def test_seasonal_mann_kendall_matches_pymannkendall():
 
 
 def test_least_squares_matches_scipy():
+    rng = np.random.default_rng(2026)  # own generator: results do not depend on test order
     for n in (12, 30):
         t = np.arange(n) + 2000.5
-        y = RNG.normal(size=n) + 0.1 * t
+        y = rng.normal(size=n) + 0.1 * t
         o = ols_trend(t, y)
         ref = sps.linregress(t, y)
         assert o.slope == pytest.approx(ref.slope)
@@ -69,8 +70,9 @@ def test_ar1_variance_reduces_to_textbook_formula():
 
 
 def test_ar1_variance_matches_simulation():
+    rng = np.random.default_rng(2026)  # own generator: results do not depend on test order
     n, phi, reps = 25, 0.5, 6000
-    e = RNG.standard_normal((reps, n))
+    e = rng.standard_normal((reps, n))
     x = np.empty_like(e)
     x[:, 0] = e[:, 0] / np.sqrt(1 - phi**2)
     for k in range(1, n):
@@ -103,9 +105,33 @@ def test_ratio_table_extrapolates_long_records():
 
 
 def test_r1_bias_correction_is_inverse_of_bias():
-    r, n = 0.4, 25
-    biased = r - (2 + 4 * r) / n
-    assert correct_r1_for_trend(biased, n) == pytest.approx(r)
+    """The correction inverts the simulated mean estimate of exactly the engine's estimator."""
+    from megavir.engine.stats import _r1_bias_table
+
+    phi, ns, mean = _r1_bias_table()
+    for n in (8, 15, 25, 60):
+        i = list(ns).index(n)
+        for r in (0.0, 0.3, 0.6, 0.9):
+            j = int(np.argmin(np.abs(phi - r)))
+            assert correct_r1_for_trend(float(mean[i, j]), n) == pytest.approx(r, abs=0.02)
+    # beyond the table: the large-n bias (2 + 5 r) / n
+    r, n = 0.4, 400
+    assert correct_r1_for_trend(r - (2 + 5 * r) / n, n) == pytest.approx(r, abs=1e-9)
+
+
+def test_r1_estimate_is_unbiased_after_correction():
+    rng = np.random.default_rng(31)
+    n, phi = 25, 0.7
+    t = np.arange(n) + 0.5
+    est = []
+    for _ in range(1500):
+        e = rng.standard_normal(n)
+        x = np.empty(n)
+        x[0] = e[0] / np.sqrt(1 - phi**2)
+        for k in range(1, n):
+            x[k] = phi * x[k - 1] + e[k]
+        est.append(ols_trend(t, x).r1)
+    assert np.mean(est) == pytest.approx(phi, abs=0.05)
 
 
 def test_weatherhead_monthly_form_and_annual_scaling():
@@ -126,9 +152,10 @@ def test_size_labels():
 
 
 def test_clear_trend_is_significant_and_robust():
+    rng = np.random.default_rng(2026)  # own generator: results do not depend on test order
     n = 30
     t = np.arange(n) + 1995.5
-    y = 0.05 * t + RNG.normal(scale=0.1, size=n)
+    y = 0.05 * t + rng.normal(scale=0.1, size=n)
     st = analyse_trend(t, y, np.arange(n) + 1995, [str(k) for k in range(n)])
     assert st.significant and st.agree and st.direction == "rising"
     assert not st.robustness.fragile
@@ -137,9 +164,10 @@ def test_clear_trend_is_significant_and_robust():
 
 
 def test_flat_noise_reports_years_needed():
+    rng = np.random.default_rng(2026)  # own generator: results do not depend on test order
     n = 20
     t = np.arange(n) + 2004.5
-    y = RNG.normal(size=n) + 0.01 * t
+    y = rng.normal(size=n) + 0.01 * t
     st = analyse_trend(t, y, np.arange(n) + 2004, [str(k) for k in range(n)])
     assert np.isfinite(st.years_needed)
     if not st.significant:

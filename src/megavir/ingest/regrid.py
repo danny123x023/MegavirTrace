@@ -150,3 +150,129 @@ def days_in_month(month_abs: int) -> int:
     import datetime as _dt
 
     return (_dt.date(y, m + 1, 1) - _dt.date(y, m, 1)).days
+
+
+# --------------------------------------------------------------------------------------
+# Projected grids (NSIDC polar stereographic) -> regular grid by binning
+# --------------------------------------------------------------------------------------
+
+HUGHES_A = 6378273.0  # Hughes 1980 ellipsoid, used by the NSIDC polar stereographic grids
+HUGHES_E = 0.081816153
+
+
+def polar_stereographic_to_latlon(
+    x: np.ndarray, y: np.ndarray, north: bool = True, true_lat: float = 70.0, lon0: float | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Inverse ellipsoidal polar stereographic projection (Snyder 1987, eqs. 21-36 to 21-40).
+
+    NSIDC grids: true scale at 70°, central meridian -45° (north) or 0° (south), Hughes ellipsoid.
+    """
+    a, e = HUGHES_A, HUGHES_E
+    if lon0 is None:
+        lon0 = -45.0 if north else 0.0
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    if not north:  # the south pole case mirrors the north one
+        x, y = -x, -y
+    phc = np.deg2rad(true_lat)
+    tc = np.tan(np.pi / 4 - phc / 2) / ((1 - e * np.sin(phc)) / (1 + e * np.sin(phc))) ** (e / 2)
+    mc = np.cos(phc) / np.sqrt(1 - e**2 * np.sin(phc) ** 2)
+    rho = np.hypot(x, y)
+    t = rho * tc / (a * mc)
+    chi = np.pi / 2 - 2 * np.arctan(t)
+    e2, e4, e6, e8 = e**2, e**4, e**6, e**8
+    lat = (
+        chi
+        + (e2 / 2 + 5 * e4 / 24 + e6 / 12 + 13 * e8 / 360) * np.sin(2 * chi)
+        + (7 * e4 / 48 + 29 * e6 / 240 + 811 * e8 / 11520) * np.sin(4 * chi)
+        + (7 * e6 / 120 + 81 * e8 / 1120) * np.sin(6 * chi)
+        + (4279 * e8 / 161280) * np.sin(8 * chi)
+    )
+    lon = np.deg2rad(lon0) + np.arctan2(x, -y)
+    lat_deg = np.rad2deg(lat)
+    lon_deg = (np.rad2deg(lon) + 180.0) % 360.0 - 180.0
+    if not north:
+        lat_deg = -lat_deg
+        lon_deg = (2 * lon0 - lon_deg + 180.0) % 360.0 - 180.0
+    return lat_deg, lon_deg
+
+
+_TREES: dict[tuple, tuple] = {}
+
+
+def _unit_vectors(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
+    la, lo = np.deg2rad(lat), np.deg2rad(lon)
+    return np.column_stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)])
+
+
+def _pixel_tree(lat2: np.ndarray, lon2: np.ndarray):
+    """A nearest-neighbour tree of the pixel centres and their spacing (radians), cached per grid."""
+    from scipy.spatial import cKDTree
+
+    key = (lat2.shape, float(lat2.flat[0]), float(lat2.flat[-1]), float(lon2.flat[0]), float(lon2.flat[-1]))
+    if key not in _TREES:
+        ok = np.isfinite(lat2) & np.isfinite(lon2)
+        xyz = _unit_vectors(lat2[ok], lon2[ok])
+        along = _unit_vectors(lat2[:, :-1].ravel(), lon2[:, :-1].ravel()) - _unit_vectors(
+            lat2[:, 1:].ravel(), lon2[:, 1:].ravel()
+        )
+        spacing = float(np.nanmedian(np.linalg.norm(along, axis=1)))
+        if len(_TREES) > 4:
+            _TREES.clear()
+        _TREES[key] = (cKDTree(xyz), np.flatnonzero(ok.ravel()), spacing)
+    return _TREES[key]
+
+
+def bin_to_grid(
+    lat: np.ndarray, lon: np.ndarray, field: np.ndarray, spec: GridSpec, min_count: int = 1
+) -> np.ndarray:
+    """Average every source pixel into the regular cell that contains its centre.
+
+    Used for projected grids (25 km polar stereographic sea ice).  Away from the poles a 0.5°
+    cell holds several pixels and gets their mean.  Poleward of about 78° a cell is narrower
+    than one pixel, so many cells hold no pixel centre: those take the value of the pixel that
+    contains the cell's centre (the nearest pixel centre within 0.75 pixel spacings), so the high
+    Arctic is not left with holes.  Not conservative; documented as pixel binning.
+    """
+    shape2 = np.shape(lat)
+    lat2 = np.asarray(lat, float)
+    lon2 = np.asarray(lon, float)
+    field2 = np.asarray(field, float)
+    lat, lon, v = (np.asarray(a, float).ravel() for a in (lat, lon, field))
+    ok = np.isfinite(lat) & np.isfinite(lon) & np.isfinite(v)
+    i = np.floor((lat[ok] - (spec.lat0 - spec.res / 2)) / spec.res).astype(int)
+    j = np.floor((lon[ok] - (spec.lon0 - spec.res / 2)) / spec.res).astype(int)
+    inside = (i >= 0) & (i < spec.ny) & (j >= 0) & (j < spec.nx)
+    flat = i[inside] * spec.nx + j[inside]
+    s = np.bincount(flat, weights=v[ok][inside], minlength=spec.ny * spec.nx)
+    c = np.bincount(flat, minlength=spec.ny * spec.nx)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = np.where(c >= min_count, s / c, np.nan)
+    if len(shape2) == 2 and min(shape2) > 1:
+        _fill_from_containing_pixel(out, c, lat2, lon2, field2, spec)
+    return out.reshape(spec.ny, spec.nx).astype(np.float32)
+
+
+def _fill_from_containing_pixel(
+    out: np.ndarray, count: np.ndarray, lat2: np.ndarray, lon2: np.ndarray, field2: np.ndarray, spec: GridSpec
+) -> None:
+    """Cells with no valid pixel centre, inside the area the pixels cover: the containing pixel's value."""
+    good = np.isfinite(lat2)
+    if not good.any():
+        return
+    lo_lat, hi_lat = float(np.nanmin(lat2[good])), float(np.nanmax(lat2[good]))
+    rows = np.flatnonzero((spec.lats >= lo_lat) & (spec.lats <= hi_lat))
+    if rows.size == 0:
+        return
+    tree, index, spacing = _pixel_tree(lat2, lon2)
+    cells = (rows[:, None] * spec.nx + np.arange(spec.nx)[None, :]).ravel()
+    cells = cells[count[cells] == 0]
+    if cells.size == 0:
+        return
+    clat = spec.lats[cells // spec.nx]
+    clon = spec.lons[cells % spec.nx]
+    dist, k = tree.query(_unit_vectors(clat, clon), distance_upper_bound=0.75 * spacing)
+    near = np.isfinite(dist)
+    vals = field2.ravel()[index[k[near]]]
+    use = np.isfinite(vals)
+    out[cells[near][use]] = vals[use]

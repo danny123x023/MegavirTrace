@@ -14,7 +14,8 @@ Conventions
 Autocorrelation
 ---------------
 The lag-1 autocorrelation r1 of the least-squares residuals is estimated, corrected for its
-small-sample bias and used twice:
+small-sample bias (measured by simulation for this exact estimator, see correct_r1_for_trend)
+and used twice:
 
 * least squares: the standard error is widened with the effective sample size
   ``n_eff = n (1 - r1) / (1 + r1)`` (Santer et al. 2000);
@@ -70,17 +71,50 @@ def lag1_autocorrelation(t: np.ndarray, x: np.ndarray, step: float) -> float:
     return num / denom
 
 
+def _r1_bias_table() -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    tab = _ratio_table()
+    if tab is None or "r1_mean" not in tab:
+        return None
+    return tab["r1_phi"], tab["r1_n"], tab["r1_mean"]
+
+
+def _invert_r1(r1_hat: np.ndarray, n: int) -> np.ndarray:
+    """r1 whose expected estimate E[r1_hat | r1, n] equals the observed r1_hat (one record length)."""
+    r1_hat = np.asarray(r1_hat, float)
+    got = _r1_bias_table()
+    if n < 6 or got is None:
+        return np.clip(r1_hat, 0.0, R1_MAX)
+    phi, ns, mean = got
+    if n > ns[-1]:
+        # beyond the table the bias is ~(2 + 5 r1) / n, so r1 = (n r1_hat + 2) / (n - 5)
+        return np.clip((n * r1_hat + 2.0) / (n - 5.0), -0.99, R1_MAX)
+    inv = 1.0 / ns.astype(float)  # decreasing
+    col = np.array([np.interp(1.0 / n, inv[::-1], mean[::-1, j]) for j in range(phi.size)])
+    return np.clip(np.interp(r1_hat, col, phi), -0.99, R1_MAX)
+
+
 def correct_r1_for_trend(r1_hat: float, n: int) -> float:
     """Undo the small-sample bias of r1 estimated from trend residuals.
 
-    E[r1_hat] ~= r1 - (2 + 4 r1) / n for residuals of a fitted straight line (van Giersbergen
-    2005), about twice the (1 + 3 r1) / n bias of a series with only its mean removed.
-    Solving for r1 gives r1 = (n r1_hat + 2) / (n - 4).
+    The lag-1 sample autocorrelation of least-squares residuals is biased low: by about
+    (2 + 5 r1) / n in long records (the (2 + 4 r1) / n of van Giersbergen 2005 for the
+    least-squares AR(1) estimator, plus r1 / n because this ratio divides by all n squared
+    residuals), and by more at high r1 in short records (at r1 = 0.9 and n = 25 the estimate
+    averages 0.56).  The mean estimate E[r1_hat | r1, n] is tabulated by simulation for exactly
+    this estimator (scripts/build_r1_bias_table.py) and inverted here.
     """
-    if n <= 6:
-        return float(np.clip(r1_hat, 0.0, R1_MAX))
-    r1 = (n * r1_hat + 2.0) / (n - 4.0)
-    return float(np.clip(r1, -0.99, R1_MAX))
+    return float(_invert_r1(np.array([r1_hat]), int(n))[0])
+
+
+def correct_r1_for_trend_many(r1_hat: np.ndarray, n: np.ndarray) -> np.ndarray:
+    """correct_r1_for_trend for many series at once (the cell map), grouped by record length."""
+    r1_hat = np.asarray(r1_hat, float)
+    n = np.asarray(n, int)
+    out = np.zeros_like(r1_hat)
+    for nn in np.unique(n):
+        sel = n == nn
+        out[sel] = _invert_r1(r1_hat[sel], int(nn))
+    return out
 
 
 def effective_n(n: int, r1: float) -> float:
@@ -371,14 +405,21 @@ def sen_slope(
     var_s: float,
     group: np.ndarray | None = None,
     alpha: float = ALPHA,
+    df: float | None = None,
 ) -> SenResult:
-    """Sen (1968) slope; interval from the (autocorrelation-corrected) variance of S (Gilbert 1987)."""
+    """Sen (1968) slope; interval from the (autocorrelation-corrected) variance of S (Gilbert 1987).
+
+    With ``df`` the interval uses the same Student t quantile as the Mann–Kendall test it
+    inverts (r1 is estimated, so the normal quantile gave intervals narrower than the test:
+    87–92 % coverage at r1 = 0.5).  ``df=None`` gives the textbook normal interval.
+    """
     slopes = np.sort(pairwise_slopes(t, y, group))
     N = slopes.size
     if N == 0:
         return SenResult(0.0, float("-inf"), float("inf"), float(np.median(y)))
     slope = float(np.median(slopes))
-    c = float(sps.norm.ppf(1 - alpha / 2) * np.sqrt(max(var_s, 0.0)))
+    q = sps.t.ppf(1 - alpha / 2, max(df, 1.0)) if df is not None else sps.norm.ppf(1 - alpha / 2)
+    c = float(q * np.sqrt(max(var_s, 0.0)))
     m1 = (N - c) / 2.0  # 1-based rank of the lower limit
     m2 = (N + c) / 2.0 + 1.0  # 1-based rank of the upper limit
     ranks = np.arange(1, N + 1)
@@ -514,6 +555,82 @@ def turning_point(t: np.ndarray, y: np.ndarray, min_points: int = 5) -> dict | N
 # --------------------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------------------
+# Is it speeding up? (FR7)
+# --------------------------------------------------------------------------------------
+
+ALPHA_ACCEL = (
+    0.025  # stricter: calibrated by Monte Carlo to keep false "speeding up" claims in the trend targets
+)
+MIN_YEARS_ACCEL = 15
+
+
+def acceleration(t: np.ndarray, y: np.ndarray, alpha: float = ALPHA_ACCEL) -> dict:
+    """Is the trend speeding up, slowing down or changing direction?
+
+    A straight line misreads acceleration, so the curvature term c of y = a + b t + c t^2 is
+    tested with the same autocorrelation treatment as the trend: r1 from the quadratic
+    residuals, corrected for the bias of a three-parameter fit ((n r1 + 3) / (n - 5)), the
+    standard error widened with n_eff and a t-test with n_eff - 3 degrees of freedom.  A
+    claim needs p < 0.025 (stricter than for the trend itself) and the robust Sen slopes of the
+    two halves of the record must show the same change.  Monte Carlo: at most 3.3 % false
+    claims at r1 = 0.3 and 4.8 % at r1 = 0.5 for a straight trend with AR(1) noise.
+    """
+    t = np.asarray(t, float)
+    y = np.asarray(y, float)
+    n = y.size
+    out = {"tested": False, "significant": False, "kind": None, "alpha": alpha}
+    if np.unique(np.floor(t)).size < MIN_YEARS_ACCEL:
+        out["reason"] = f"needs at least {MIN_YEARS_ACCEL} years"
+        return out
+    order = np.argsort(t)
+    t, y = t[order], y[order]
+    tc = t - t.mean()
+    X = np.column_stack([np.ones(n), tc, tc * tc])
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    res = y - X @ beta
+    s2 = float(res @ res) / (n - 3)
+    cov = s2 * np.linalg.inv(X.T @ X)
+    r1_hat = lag1_autocorrelation(t, res, 1.0)
+    r1 = float(np.clip((n * r1_hat + 3.0) / (n - 5.0), 0.0, R1_MAX))
+    n_eff = effective_n(n, r1)
+    h = n // 2
+    early = float(np.median(pairwise_slopes(t[:h], y[:h])))
+    late = float(np.median(pairwise_slopes(t[h:], y[h:])))
+    out.update(
+        {
+            "tested": True,
+            "curvature": float(beta[2]),
+            "slope_early": early,
+            "slope_late": late,
+            "split": float(t[h]),
+            "first": float(t[0]),
+            "last": float(t[-1]),
+            "r1": r1,
+            "n_eff": n_eff,
+        }
+    )
+    if n_eff <= 4 or cov[2, 2] <= 0:
+        out["p"] = 1.0
+        out["reason"] = "too few independent values"
+        return out
+    df = n_eff - 3.0
+    se = float(np.sqrt(cov[2, 2]) * np.sqrt((n - 3.0) / df))
+    p = float(2 * sps.t.sf(abs(beta[2] / se), df))
+    out["p"] = p
+    c = float(beta[2])
+    agrees = late != early and np.sign(late - early) == np.sign(c)
+    if p < alpha and agrees:
+        out["significant"] = True
+        if early != 0 and late != 0 and np.sign(early) != np.sign(late):
+            out["kind"] = "changed_direction"
+        elif abs(late) > abs(early):
+            out["kind"] = "speeding_up"
+        else:
+            out["kind"] = "slowing_down"
+    return out
+
+
 @dataclass
 class TrendStats:
     n: int
@@ -534,6 +651,7 @@ class TrendStats:
     robustness: RobustnessResult
     unusual: list[dict]
     turning: dict | None
+    acceleration: dict | None
     alpha: float = ALPHA
 
     def to_dict(self) -> dict:
@@ -572,7 +690,7 @@ def trend_test(
     """The agreement rule: significant only if both corrected tests pass and all signs agree."""
     ols = ols_trend(t, y, step=1.0 / per_year, alpha=alpha)
     mk = mann_kendall(t, y, r1=ols.r1, group=group, df=ols.df if ols.testable else None)
-    sen = sen_slope(t, y, mk.var_s_adj, group=group, alpha=alpha)
+    sen = sen_slope(t, y, mk.var_s_adj, group=group, alpha=alpha, df=ols.df if ols.testable else None)
     signs = {np.sign(ols.slope), np.sign(sen.slope), np.sign(mk.S)}
     agree = len(signs) == 1 and 0 not in signs
     significant = bool(ols.testable and ols.p < alpha and mk.p < alpha and agree)
@@ -608,7 +726,8 @@ def analyse_trend(
 
     span = float(t.max() - t.min()) + step
     n_star = years_to_detect(sen.slope, ols.resid_sd, ols.r1, per_year)
-    years_more = max(0.0, float(np.ceil(n_star - span))) if np.isfinite(n_star) else float("inf")
+    # the verdict shows ceil(n*) years needed and the record's length in whole years: their difference
+    years_more = max(0.0, float(np.ceil(n_star) - round(span))) if np.isfinite(n_star) else float("inf")
     eff, eff_label = size_against_noise(sen.slope, span - step, ols.resid_sd)
     rob = robustness(t, y, years, g)
     resid = y - (ols.intercept + ols.slope * t)
@@ -631,5 +750,6 @@ def analyse_trend(
         robustness=rob,
         unusual=unusual_points(resid, labels),
         turning=turning_point(t, y) if per_year == 1 else None,
+        acceleration=acceleration(t, y) if per_year == 1 else None,
         alpha=alpha,
     )

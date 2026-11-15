@@ -45,6 +45,34 @@ class Granule:
         return (self.data_url or self.ur).rstrip("/").split("/")[-1]
 
 
+def _granule_from_item(it: dict) -> Granule:
+    u = it["umm"]
+    rng = (u.get("TemporalExtent") or {}).get("RangeDateTime") or {}
+    data_url = opendap = None
+    for ru in u.get("RelatedUrls", []):
+        url = ru.get("URL", "")
+        if url.startswith("s3://"):
+            continue
+        if ru.get("Type") == "GET DATA" and not data_url and not url.endswith((".xml", ".md5", ".sha512")):
+            data_url = url
+        if ru.get("Type") == "USE SERVICE API" and "opendap" in url.lower():
+            opendap = url
+    size = None
+    for ai in (u.get("DataGranule") or {}).get("ArchiveAndDistributionInformation", []) or []:
+        if ai.get("SizeInBytes"):
+            size = ai["SizeInBytes"] / 1e6
+        elif ai.get("Size") and ai.get("SizeUnit") == "MB":
+            size = float(ai["Size"])
+    return Granule(
+        u["GranuleUR"],
+        rng.get("BeginningDateTime", ""),
+        rng.get("EndingDateTime", ""),
+        data_url,
+        opendap,
+        size,
+    )
+
+
 def cmr_granules(concept_id: str, start: str, end: str, page_size: int = 2000) -> list[Granule]:
     """All granules of a collection in a time range (public, no login)."""
     out: list[Granule] = []
@@ -67,42 +95,53 @@ def cmr_granules(concept_id: str, start: str, end: str, page_size: int = 2000) -
             )
             r.raise_for_status()
             items = r.json().get("items", [])
-            for it in items:
-                u = it["umm"]
-                rng = (u.get("TemporalExtent") or {}).get("RangeDateTime") or {}
-                data_url = opendap = None
-                for ru in u.get("RelatedUrls", []):
-                    url = ru.get("URL", "")
-                    if url.startswith("s3://"):
-                        continue
-                    if (
-                        ru.get("Type") == "GET DATA"
-                        and not data_url
-                        and not url.endswith((".xml", ".md5", ".sha512"))
-                    ):
-                        data_url = url
-                    if ru.get("Type") == "USE SERVICE API" and "opendap" in url.lower():
-                        opendap = url
-                size = None
-                for ai in (u.get("DataGranule") or {}).get("ArchiveAndDistributionInformation", []) or []:
-                    if ai.get("SizeInBytes"):
-                        size = ai["SizeInBytes"] / 1e6
-                    elif ai.get("Size") and ai.get("SizeUnit") == "MB":
-                        size = float(ai["Size"])
-                out.append(
-                    Granule(
-                        u["GranuleUR"],
-                        rng.get("BeginningDateTime", ""),
-                        rng.get("EndingDateTime", ""),
-                        data_url,
-                        opendap,
-                        size,
-                    )
-                )
+            out.extend(_granule_from_item(it) for it in items)
             search_after = r.headers.get("CMR-Search-After")
             if not items or not search_after:
                 break
     return out
+
+
+def cmr_summary(concept_id: str, granule_filter=None, sample: int = 50) -> dict:
+    """What a collection holds at NASA right now, from two small catalogue queries (public, no login).
+
+    ``hits`` counts every granule CMR lists; with a ``granule_filter`` (for example monthly files
+    among daily ones) the count is scaled by the share of the newest ``sample`` granules that pass.
+    The total size is estimated from the mean size of those granules.
+    """
+    with httpx.Client(timeout=60, headers={"User-Agent": USER_AGENT}) as client:
+
+        def page(sort: str, n: int):
+            r = client.get(
+                CMR_GRANULES, params={"collection_concept_id": concept_id, "page_size": n, "sort_key": sort}
+            )
+            r.raise_for_status()
+            return int(r.headers.get("CMR-Hits", "0")), [
+                _granule_from_item(it) for it in r.json().get("items", [])
+            ]
+
+        if granule_filter:  # e.g. monthly files among two daily files a day: look further back
+            sample = max(sample, 400)
+        hits, newest = page("-start_date", sample)
+        _, oldest = page("start_date", sample if granule_filter else 1)
+    share = 1.0
+    if granule_filter:
+        kept = [g for g in newest if granule_filter(g)]
+        share = len(kept) / len(newest) if newest else 1.0
+        newest = kept
+        oldest = [g for g in oldest if granule_filter(g)]
+    if not newest or not oldest:
+        raise RuntimeError("NASA's catalogue lists no granules for this collection")
+    sizes = [g.size_mb for g in newest if g.size_mb]
+    files = int(round(hits * share))
+    return {
+        "first_begin": oldest[0].begin,
+        "last_begin": newest[0].begin,
+        "last_end": newest[0].end,
+        "files": files,
+        "bytes": int(sum(sizes) / len(sizes) * 1e6 * files) if sizes else None,
+        "newest": newest[0],
+    }
 
 
 # --------------------------------------------------------------------------------------
@@ -117,7 +156,8 @@ def earthdata_session():
     has_env = os.environ.get("EARTHDATA_TOKEN") or (
         os.environ.get("EARTHDATA_USERNAME") and os.environ.get("EARTHDATA_PASSWORD")
     )
-    has_netrc = (Path.home() / ".netrc").exists() or (Path.home() / "_netrc").exists()
+    netrc_file = Path(os.environ["NETRC"]) if os.environ.get("NETRC") else Path.home() / ".netrc"
+    has_netrc = netrc_file.exists() or (Path.home() / "_netrc").exists()
     if not (has_env or has_netrc):
         raise LoginRequired(
             "This product needs a free NASA Earthdata Login. Set EARTHDATA_TOKEN (or EARTHDATA_USERNAME and "
@@ -129,6 +169,22 @@ def earthdata_session():
     s = earthaccess.get_requests_https_session()
     s.headers["User-Agent"] = USER_AGENT
     return s
+
+
+def earthdata_bearer() -> str:
+    """The Earthdata Login bearer token (for services such as Giovanni that need one).
+
+    Logs in the same way as ``earthdata_session``; the token is used in memory only.
+    """
+    import earthaccess
+
+    earthdata_session()
+    tok = earthaccess.get_edl_token()
+    if isinstance(tok, dict):
+        tok = tok.get("access_token")
+    if not tok:
+        raise LoginRequired("no Earthdata token is available for this login")
+    return str(tok)
 
 
 class PublicSession:

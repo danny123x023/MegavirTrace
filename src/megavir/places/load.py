@@ -217,7 +217,15 @@ def land_fraction(spec: GridSpec, land) -> np.ndarray:
     return out
 
 
-def load_land_masks(conn, raw: Path, resolutions=(0.5, 1.0, 2.0)) -> dict:
+def mask_resolutions() -> tuple[float, ...]:
+    """Every grid a variable is stored on (SMAP salinity is kept at 0.25°), plus 0.5°, 1° and 2°."""
+    from megavir.ingest.products import PRODUCTS
+
+    return tuple(sorted({float(p.target_res) for p in PRODUCTS.values()} | {0.5, 1.0, 2.0}))
+
+
+def load_land_masks(conn, raw: Path, resolutions: tuple[float, ...] | None = None) -> dict:
+    resolutions = resolutions or mask_resolutions()
     polys = [shape(geo) for _, geo in _shapes(raw / "ne_land" / "ne_50m_land.shp")]
     land = shapely.union_all([p if p.is_valid else shapely.make_valid(p) for p in polys])
     report = {}

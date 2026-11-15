@@ -34,9 +34,35 @@ class Settings(BaseSettings):
     ai_daily_cap: int = 500
     ai_max_tokens: int = 1200
     ai_timeout_s: float = 45.0
+    # Z.ai GLM 5.x "thinks" by default: minutes per answer. Off keeps answers within seconds.
+    ai_thinking: bool = False
+    # Keys, active service and models chosen in the Admin panel (owner-only file; overrides the
+    # values above).  Default: data/ai_settings.json.
+    ai_settings_file: str = ""
 
     # API rate limits for the open data API (FR17) and analysis endpoints
     analysis_per_minute_per_ip: int = 60
+
+    # Import dashboard: actions are allowed from this computer, or with this token (sent by the
+    # page as the X-Admin-Token header).  Empty = this computer only.
+    admin_token: str = ""
+    # Where the Earthdata Login is kept (default: $NETRC, else ~/.netrc).
+    netrc_path: str = ""
+
+    # Detailed base map (streets, places, buildings: OpenStreetMap data).  The API relays and keeps
+    # the files, so browsers only ever talk to this site.  Empty URL = country outlines only.
+    basemap_url: str = "https://tiles.openfreemap.org"
+    basemap_style_light: str = "liberty"
+    basemap_style_dark: str = "dark"
+    basemap_public_path: str = "/api/basemap"  # where browsers reach /basemap (the /api proxy)
+    basemap_attribution: str = (
+        '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> '
+        '<a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">&copy; OpenMapTiles</a> '
+        'Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">'
+        "&copy; OpenStreetMap contributors</a>"
+    )
+    basemap_cache_mb: int = 2048
+    basemap_per_minute_per_ip: int = 1500
 
 
 @lru_cache(maxsize=1)

@@ -37,7 +37,7 @@ stop_bg() {
   fi
 }
 
-api_start() { start_bg api "$RUN/api.log" "$ROOT/.venv/bin/uvicorn" megavir.api.main:app --host 127.0.0.1 --port 8000 --workers 2; }
+api_start() { start_bg api "$RUN/api.log" "$ROOT/.venv/bin/uvicorn" megavir.api.main:app --host 127.0.0.1 --port 8000 --workers 2 --timeout-keep-alive 75; }
 web_start() { (cd "$ROOT/web" && start_bg web "$RUN/web.log" npm run dev); }
 
 case "${1:-}" in

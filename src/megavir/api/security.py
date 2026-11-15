@@ -62,6 +62,8 @@ class OriginAndHeaders(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
         self.limiter = SlidingWindow(settings().analysis_per_minute_per_ip, 60.0)
+        # map tiles come in bursts (dozens per pan); this only stops bulk downloading through us
+        self.map_limiter = SlidingWindow(settings().basemap_per_minute_per_ip, 60.0)
 
     async def dispatch(self, request: Request, call_next):
         allowed = set(settings().allowed_origins)
@@ -69,8 +71,17 @@ class OriginAndHeaders(BaseHTTPMiddleware):
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             if not origin or origin not in allowed:
                 return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
-        if request.url.path.startswith(("/analysis", "/ai", "/reports", "/v1")):
-            ok, retry = self.limiter.allow(client_ip(request))
+        limiter = (
+            self.limiter
+            if request.url.path.startswith(
+                ("/analysis", "/ai", "/reports", "/v1", "/context", "/cases", "/landing")
+            )
+            else self.map_limiter
+            if request.url.path.startswith("/basemap")
+            else None
+        )
+        if limiter:
+            ok, retry = limiter.allow(client_ip(request))
             if not ok:
                 return JSONResponse(
                     {"detail": "Too many requests, please wait a moment."},

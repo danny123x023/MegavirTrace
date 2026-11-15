@@ -11,6 +11,7 @@ import math
 
 from megavir.catalog import Variable
 
+from .aggregate import months_phrase
 from .stats import TrendStats
 
 MINUS = "−"
@@ -27,16 +28,17 @@ TEMPLATES: dict[str, dict[str, str]] = {
         # body
         "plain": "In short: {place} is {word}.",
         "range": "Best estimate {srate} {unit} per decade (95% range {lo} to {hi}), {period}.",
-        "agree_sig": "Two independent tests agree that a change this steady is unlikely to be chance "
+        "agree_sig": "Two different tests agree that a change this steady is unlikely to be chance "
         "(Mann–Kendall p {p_mk}; least squares p {p_ols}), after allowing for how much each {step} "
         "resembles the one before.",
         "nosig": "The range includes no change at all, so the ups and downs could explain it "
         "(Mann–Kendall p {p_mk}; least squares p {p_ols}).",
+        "nosig_edge": "The tests do not find this change clear enough to call it a trend (Mann–Kendall p {p_mk}; "
+        "least squares p {p_ols}).",
         "mixed": "One test finds a trend and the other does not (Mann–Kendall p {p_mk}; least squares "
         "p {p_ols}), or they disagree on its direction, so we do not call it significant.",
         "untestable": "Each {step} is so similar to the one before ({r1}) that the record holds too few "
         "independent values to test. A longer record is needed.",
-        "try_monthly": "Monthly values hold much more information: try the monthly anomalies view.",
         "effect": "Over the record the trend line moves {total} {unit_total}: {effect} next to the usual "
         "{step}-to-{step} scatter.",
         "need_more": "To tell a trend of this size from the natural ups and downs would take about "
@@ -45,6 +47,12 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "is a real trend it is probably smaller than this estimate.",
         "fragile": "Handle with care: the trend is fragile. It changes direction {where}.",
         "robust": "The direction holds in both halves of the record and when any single year is left out.",
+        "pace_speeding_up": "It is speeding up: about {late} {unit} per decade from {split} on, against {early} "
+        "before (test of the change in pace p {p}).",
+        "pace_slowing_down": "It is slowing down: about {late} {unit} per decade from {split} on, against {early} "
+        "before (test of the change in pace p {p}).",
+        "pace_changed_direction": "The direction changed: {early} {unit} per decade before {split}, {late} since "
+        "(test of the change in pace p {p}).",
         "turning": "Exploratory clue: the change looks different before and after about {at} "
         "({before} then {after} {unit} per decade).",
         # caveats
@@ -52,7 +60,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "cav_test": "TEST DATA: a small development sample, not a real result.",
         "cav_synthetic": "SYNTHETIC DATA: made-up numbers for software testing only.",
         "cav_coverage": "Parts of the region had no data in some months (lowest coverage {cov}).",
-        "cav_seasonal": "Monthly values: each month is compared only with the same month in other years.",
+        "cav_monthly": "The chart shows months; the tests use the yearly means of the monthly anomalies, because "
+        "neighbouring months, and the months of one El Niño year, are not independent.",
+        "cav_months_used": "Yearly values here use only the months with data ({months}); the other months are "
+        "never observed over this region.",
         # compare
         "cmp_head_sig": "{Name}: {a} and {b} really are changing differently, by about {diff} {unit} per decade.",
         "cmp_head_nosig": "{Name}: no clear difference between the trends in {a} and {b}.",
@@ -67,7 +78,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "since_season": "{season} only",
     },
     "es": {
-        "head_sig": "{Name} en {place} ha estado {updown} desde {start}: alrededor de {rate} {unit} por década.",
+        "head_sig": "{Subject} en {place} ha estado {updown} desde {start}: alrededor de {rate} {unit} por década.",
+        "head_sig_pl": "{Subject} en {place} han estado {updown} desde {start}: alrededor de {rate} {unit} por década.",
         "head_nosig": "{Name} en {place}: sin tendencia clara desde {start}.",
         "head_mixed": "{Name} en {place}: la evidencia es mixta.",
         "head_untestable": "{Name} en {place}: este registro no se puede evaluar con fiabilidad.",
@@ -75,16 +87,17 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "down": "bajando",
         "plain": "En resumen: en {place} la tendencia es {word}.",
         "range": "Mejor estimación {srate} {unit} por década (rango del 95 %: {lo} a {hi}), {period}.",
-        "agree_sig": "Dos pruebas independientes coinciden en que un cambio tan constante difícilmente es "
+        "agree_sig": "Dos pruebas distintas coinciden en que un cambio tan constante difícilmente es "
         "casualidad (Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}), teniendo en cuenta cuánto se "
         "parece cada {step} al anterior.",
         "nosig": "El rango incluye la ausencia de cambio, así que los altibajos podrían explicarlo "
+        "(Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}).",
+        "nosig_edge": "Las pruebas no encuentran este cambio lo bastante claro para llamarlo tendencia "
         "(Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}).",
         "mixed": "Una prueba encuentra tendencia y la otra no (Mann–Kendall p {p_mk}; mínimos cuadrados "
         "p {p_ols}), o no coinciden en la dirección, así que no la llamamos significativa.",
         "untestable": "Cada {step} se parece tanto al anterior ({r1}) que el registro tiene muy pocos "
         "valores independientes. Hace falta un registro más largo.",
-        "try_monthly": "Los valores mensuales contienen mucha más información: pruebe la vista de anomalías mensuales.",
         "effect": "A lo largo del registro la línea de tendencia se mueve {total} {unit_total}: un cambio "
         "{effect} frente a la dispersión habitual.",
         "need_more": "Para distinguir una tendencia de este tamaño de los altibajos naturales harían falta "
@@ -93,13 +106,22 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "si hay una tendencia real, probablemente es menor que esta estimación.",
         "fragile": "Con cautela: la tendencia es frágil. Cambia de dirección {where}.",
         "robust": "La dirección se mantiene en ambas mitades del registro y al quitar cualquier año.",
+        "pace_speeding_up": "Se está acelerando: unos {late} {unit} por década desde {split}, frente a {early} "
+        "antes (prueba del cambio de ritmo p {p}).",
+        "pace_slowing_down": "Se está frenando: unos {late} {unit} por década desde {split}, frente a {early} "
+        "antes (prueba del cambio de ritmo p {p}).",
+        "pace_changed_direction": "La dirección cambió: {early} {unit} por década antes de {split}, {late} "
+        "desde entonces (prueba del cambio de ritmo p {p}).",
         "turning": "Pista exploratoria: el cambio parece distinto antes y después de {at} "
         "({before} y luego {after} {unit} por década).",
         "cav_cause": "Una tendencia no es una causa: muestra qué cambió, no por qué.",
         "cav_test": "DATOS DE PRUEBA: una muestra pequeña de desarrollo, no un resultado real.",
         "cav_synthetic": "DATOS SINTÉTICOS: números inventados solo para probar el software.",
         "cav_coverage": "Partes de la región no tuvieron datos algunos meses (cobertura mínima {cov}).",
-        "cav_seasonal": "Valores mensuales: cada mes se compara solo con el mismo mes de otros años.",
+        "cav_monthly": "El gráfico muestra meses; las pruebas usan las medias anuales de las anomalías mensuales, "
+        "porque los meses vecinos, y los meses de un mismo año de El Niño, no son independientes.",
+        "cav_months_used": "Los valores anuales aquí usan solo los meses con datos ({months}); los demás meses nunca "
+        "se observan en esta región.",
         "cmp_head_sig": "{Name}: {a} y {b} realmente cambian de forma distinta, unos {diff} {unit} por década.",
         "cmp_head_nosig": "{Name}: sin diferencia clara entre las tendencias de {a} y {b}.",
         "cmp_body": "La prueba se hace sobre la diferencia {a} menos {b}, así que los altibajos comunes se "
@@ -118,6 +140,17 @@ EFFECT_WORDS = {
 }
 
 LANGUAGES = tuple(TEMPLATES)
+
+UNIT_WORDS_ES = (("/month", "/mes"), ("/year", "/año"), ("/hour", "/hora"), ("/season", "/estación"), ("molecules", "moléculas"))
+
+
+def unit_text(unit: str, lang: str) -> str:
+    """Units in the verdict's language: 'mm/month' is 'mm/mes' in Spanish (symbols stay as they are)."""
+    if lang != "es":
+        return unit
+    for en, es in UNIT_WORDS_ES:
+        unit = unit.replace(en, es)
+    return unit
 
 
 # --------------------------------------------------------------------------------------
@@ -146,7 +179,9 @@ def fmt_signed(x: float, sig: int = 2, lang: str = "en") -> str:
 def fmt_p(p: float, lang: str = "en") -> str:
     if p < 0.001:
         return "< " + ("0,001" if lang == "es" else "0.001")
-    return "= " + fmt_num(p, sig=2, max_decimals=4, lang=lang)
+    # near the 5 % line two digits would print 0.050 for both 0.0496 and 0.0504
+    sig = 3 if 0.045 <= p < 0.055 else 2
+    return "= " + fmt_num(p, sig=sig, max_decimals=4, lang=lang)
 
 
 def fmt_pct(x: float) -> str:
@@ -176,11 +211,14 @@ def trend_verdict(
     lang: str = "en",
     data_kind: str = "real",
     min_coverage: float | None = None,
+    mode: str = "annual",
+    months_used: tuple[int, ...] | list[int] = tuple(range(1, 13)),
 ) -> dict:
     """Return {"status", "headline", "sentences", "caveats", "shown"} for one trend."""
     if lang not in TEMPLATES:
         lang = "en"
     t = TEMPLATES[lang]
+    unit = unit_text(unit, lang)
     per_dec = 10.0
     rate = st.sen.slope * per_dec
     lo, hi = st.sen.ci_low * per_dec, st.sen.ci_high * per_dec
@@ -198,9 +236,18 @@ def trend_verdict(
         "start": str(start),
         "end": str(end),
     }
-    common = {"Name": _cap(var.name), "place": place, "unit": unit, "period": period, "step": step, **shown}
+    loc = var.local(lang)
+    common = {
+        "Name": _cap(loc["name"]),
+        "Subject": loc.get("subject", _cap(loc["name"])),
+        "place": place,
+        "unit": unit,
+        "period": period,
+        "step": step,
+        **shown,
+    }
     up = st.sen.slope > 0
-    word = var.rising_words[0] if up else var.rising_words[1]
+    word = loc["rising_words"][0] if up else loc["rising_words"][1]
     updown = t["up"] if up else t["down"]
     sentences: list[str] = []
 
@@ -209,11 +256,10 @@ def trend_verdict(
         headline = t["head_untestable"].format(**common)
         shown["r1"] = fmt_num(st.ols.r1, lang=lang)
         sentences.append(t["untestable"].format(r1=f"r₁ = {shown['r1']}", step=step))
-        if st.per_year == 1:
-            sentences.append(t["try_monthly"])
     elif st.significant:
         status = "significant"
-        headline = t["head_sig"].format(updown=updown, **common)
+        key = "head_sig_pl" if loc.get("plural") and "head_sig_pl" in t else "head_sig"
+        headline = t[key].format(updown=updown, **common)
         sentences.append(t["plain"].format(place=place, word=word))
         sentences.append(t["range"].format(**common))
         sentences.append(t["agree_sig"].format(**common))
@@ -228,7 +274,7 @@ def trend_verdict(
         status = "not_significant"
         headline = t["head_nosig"].format(**common)
         sentences.append(t["range"].format(**common))
-        sentences.append(t["nosig"].format(**common))
+        sentences.append(t["nosig" if lo <= 0 <= hi else "nosig_edge"].format(**common))
 
     if st.ols.testable:
         span = st.last - st.first
@@ -241,9 +287,10 @@ def trend_verdict(
         )
     if status in ("not_significant", "tests_disagree") and math.isfinite(st.years_needed):
         span_years = int(round(st.last - st.first + 1.0 / st.per_year))
-        if st.years_more > 0:
-            shown["n_star"] = str(int(math.ceil(st.years_needed)))
-            shown["more"] = str(int(st.years_more))
+        n_star = int(math.ceil(st.years_needed))
+        if n_star > span_years:
+            shown["n_star"] = str(n_star)
+            shown["more"] = str(n_star - span_years)  # so the three numbers always add up
             shown["span"] = str(span_years)
             sentences.append(
                 t["need_more"].format(n_star=shown["n_star"], more=shown["more"], span=shown["span"])
@@ -257,7 +304,22 @@ def trend_verdict(
             sentences.append(t["fragile"].format(where=where))
         else:
             sentences.append(t["robust"])
-    if st.turning and st.turning.get("preferred"):
+    acc = st.acceleration or {}
+    if acc.get("significant"):
+        shown["pace_early"] = fmt_signed(acc["slope_early"] * per_dec, lang=lang)
+        shown["pace_late"] = fmt_signed(acc["slope_late"] * per_dec, lang=lang)
+        shown["pace_split"] = str(int(acc["split"]))
+        shown["pace_p"] = fmt_p(acc["p"], lang)
+        sentences.append(
+            t["pace_" + acc["kind"]].format(
+                early=shown["pace_early"],
+                late=shown["pace_late"],
+                split=shown["pace_split"],
+                p=shown["pace_p"],
+                unit=unit,
+            )
+        )
+    elif st.turning and st.turning.get("preferred"):
         shown["turning_at"] = str(int(st.turning["at"]))
         sentences.append(
             t["turning"].format(
@@ -268,9 +330,11 @@ def trend_verdict(
             )
         )
 
-    caveats = [t["cav_cause"], var.caveat]
-    if st.seasonal_test:
-        caveats.append(t["cav_seasonal"])
+    caveats = [t["cav_cause"], loc["caveat"]]
+    if mode in ("monthly", "raw"):
+        caveats.append(t["cav_monthly"])
+    if mode != "season" and 0 < len(months_used) < 12:
+        caveats.append(t["cav_months_used"].format(months=months_phrase(tuple(months_used), lang)))
     if min_coverage is not None and min_coverage < 0.95:
         caveats.append(t["cav_coverage"].format(cov=fmt_pct(min_coverage)))
     dc = data_caveat(data_kind, lang)
@@ -323,6 +387,7 @@ def compare_verdict(
     data_kind: str = "real",
 ) -> dict:
     t = TEMPLATES.get(lang, TEMPLATES["en"])
+    unit = unit_text(unit, lang if lang in TEMPLATES else "en")
     d = cmp["difference"]
     shown = {
         "diff": fmt_num(abs(d["slope_per_decade"]), lang=lang),
@@ -332,13 +397,14 @@ def compare_verdict(
         "p": fmt_p(d["p"], lang),
         "mdd": fmt_num(d["min_detectable_per_decade"], lang=lang),
     }
-    common = {"Name": _cap(var.name), "a": name_a, "b": name_b, "unit": unit, **shown}
+    loc = var.local(lang)
+    common = {"Name": _cap(loc["name"]), "a": name_a, "b": name_b, "unit": unit, **shown}
     status = "significant" if d["significant"] else "not_significant"
     headline = t["cmp_head_sig" if d["significant"] else "cmp_head_nosig"].format(**common)
     sentences = [t["cmp_body"].format(**common), t["cmp_mdd"].format(**common)]
     if cmp.get("opposite"):
         sentences.append(t["cmp_opposite"])
-    caveats = [t["cav_cause"], var.caveat]
+    caveats = [t["cav_cause"], loc["caveat"]]
     dc = data_caveat(data_kind, lang)
     if dc:
         caveats.insert(0, dc)
@@ -350,3 +416,139 @@ def compare_verdict(
         "shown": shown,
         "lang": lang,
     }
+
+
+# --------------------------------------------------------------------------------------
+# Moves together (FR11)
+# --------------------------------------------------------------------------------------
+
+RELATED_TEMPLATES = {
+    "en": {
+        "head_sig": "{A} and {B} in {place} move together.",
+        "head_nosig": "No clear relationship between {a} and {B} in {place}.",
+        "same": "When {X} is above normal, {Y} tends to be {dir} normal {when} (r = {r}).",
+        "above": "above",
+        "below": "below",
+        "same_month": "in the same month",
+        "later": "about {k} months later",
+        "later_one": "about a month later",
+        "how": "This compares month-to-month ups and downs after removing each seasonal cycle and long-term trend. "
+        "The strongest of the {L} lags tried has p {p} after allowing for that search and for how alike "
+        "neighbouring months are.",
+        "nosig": "The strongest link, {when}, is r = {r}, which could be chance (p {p} after allowing for the {L} lags "
+        "tried and for how alike neighbouring months are).",
+        "cav_related": "Related, not caused by: both may follow something else, such as the same weather, El Niño or "
+        "the timing of the seasons.",
+    },
+    "es": {
+        "head_sig": "{A} y {B} en {place} se mueven juntos.",
+        "head_nosig": "Sin relación clara entre {a} y {B} en {place}.",
+        "same": "Cuando {X} está por encima de lo normal, {Y} tiende a estar por {dir} de lo normal {when} (r = {r}).",
+        "above": "encima",
+        "below": "debajo",
+        "same_month": "el mismo mes",
+        "later": "unos {k} meses después",
+        "later_one": "aproximadamente un mes después",
+        "how": "Se comparan los altibajos de un mes a otro tras quitar el ciclo estacional y la tendencia de cada "
+        "variable. El más fuerte de los {L} desfases probados tiene p {p} teniendo en cuenta esa búsqueda y "
+        "cuánto se parecen los meses vecinos.",
+        "nosig": "El vínculo más fuerte, {when}, es r = {r}, que podría ser casualidad (p {p} teniendo en cuenta los "
+        "{L} desfases probados y cuánto se parecen los meses vecinos).",
+        "cav_related": "Relacionado no significa causado: ambos pueden seguir a otra cosa, como el mismo tiempo, El Niño "
+        "o el calendario de las estaciones.",
+    },
+}
+
+
+def related_verdict(
+    rel: dict, name_a: str, name_b: str, place: str, lang: str = "en", data_kind: str = "real"
+) -> dict:
+    t = RELATED_TEMPLATES.get(lang, RELATED_TEMPLATES["en"])
+    base = TEMPLATES.get(lang, TEMPLATES["en"])
+    k = int(rel["best_lag"])
+    X, Y = (name_a, name_b) if k >= 0 else (name_b, name_a)
+    when = t["same_month"] if k == 0 else t["later_one"] if abs(k) == 1 else t["later"].format(k=abs(k))
+    shown = {
+        "r": fmt_num(rel["best_r"], sig=2, lang=lang),
+        "p": fmt_p(rel["p_adjusted"], lang),
+        "L": str(rel["n_lags_tested"]),
+        "lag": str(k),
+    }
+    low_a = name_a[:1].lower() + name_a[1:] if lang == "en" else name_a
+    low_b = name_b[:1].lower() + name_b[1:] if lang == "en" else name_b
+    common = {"A": _cap(name_a), "a": low_a, "B": low_b, "place": place}
+    if rel["significant"]:
+        status = "significant"
+        headline = t["head_sig"].format(**common)
+        sentences = [
+            t["same"].format(
+                X=X.lower(),
+                Y=Y.lower(),
+                dir=t["above"] if rel["same_direction"] else t["below"],
+                when=when,
+                r=shown["r"],
+            ),
+            t["how"].format(L=shown["L"], p=shown["p"]),
+        ]
+    else:
+        status = "not_significant"
+        headline = t["head_nosig"].format(**common)
+        sentences = [t["nosig"].format(when=when, r=shown["r"], p=shown["p"], L=shown["L"])]
+    caveats = [t["cav_related"]]
+    dc = data_caveat(data_kind, lang)
+    if dc:
+        caveats.insert(0, dc)
+    caveats.append(base["cav_cause"])
+    return {
+        "status": status,
+        "headline": headline,
+        "sentences": sentences,
+        "caveats": caveats,
+        "shown": shown,
+        "lang": lang,
+    }
+
+
+# --------------------------------------------------------------------------------------
+# Climate projections (FR15): template summary of the ensemble ranges
+# --------------------------------------------------------------------------------------
+
+PROJ_TEMPLATES = {
+    "en": {
+        "line": "{scenario}: around {year}, the {n} models put {place} at {med} {unit} {versus} (range {lo} to {hi}).",
+        "versus": "compared with 1995–2010",
+        "none": "No projection values were available for this region.",
+    },
+    "es": {
+        "line": "{scenario}: hacia {year}, los {n} modelos sitúan {place} en {med} {unit} {versus} (rango {lo} a {hi}).",
+        "versus": "respecto a 1995–2010",
+        "none": "No hubo valores de proyección para esta región.",
+    },
+}
+PROJ_SCENARIOS_ES = {"ssp245": "SSP2-4.5 (camino intermedio)", "ssp585": "SSP5-8.5 (emisiones muy altas)"}
+
+
+def projection_summary(result: dict, place: str, lang: str = "en") -> list[str]:
+    t = PROJ_TEMPLATES.get(lang, PROJ_TEMPLATES["en"])
+    out = []
+    unit = unit_text(result["units"], lang)
+    for sc, s in result["scenarios"].items():
+        # the last sample year with values
+        k = next((i for i in range(len(result["years"]) - 1, -1, -1) if s["median"][i] is not None), None)
+        if k is None:
+            continue
+        label = PROJ_SCENARIOS_ES.get(sc, s["label"]) if lang == "es" else s["label"]
+        out.append(
+            t["line"].format(
+                scenario=label,
+                year=result["years"][k],
+                n=s["models"][k],
+                place=place,
+                med=fmt_signed(s["median"][k], lang=lang),
+                lo=fmt_signed(s["min"][k], lang=lang),
+                hi=fmt_signed(s["max"][k], lang=lang),
+                unit=unit,
+                versus=t["versus"],
+            )
+        )
+    return out or [t["none"]]

@@ -13,25 +13,73 @@ product (to plan the full download).
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import fcntl
+import hashlib
 import json
 import logging
+import os
 import re
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 from megavir.catalog import DATASETS, VARIABLES
-from megavir.store import GridSpec, read_mask, write_version
+from megavir.store import GridSpec, read_land_mask, write_version
 
 from . import download as dl
-from .products import PRODUCTS, Product, gunzip, month_abs_from_iso, standard_fields
-from .regrid import NativeGrid, Regridder
+from .products import PRODUCTS, Product, gunzip, month_abs_from_iso, multi_time_fields, standard_fields
+from .regrid import NativeGrid, Regridder, bin_to_grid
 from .validate import validate_cube
 
 log = logging.getLogger("megavir.ingest")
+
+
+class ProductBusy(RuntimeError):
+    """Another import of the same product is running (command line or dashboard)."""
+
+
+def _progress(**fields) -> None:
+    """One machine-readable progress line for the import dashboard's job runner (MEGAVIR_PROGRESS=1)."""
+    if os.environ.get("MEGAVIR_PROGRESS") == "1":
+        print("PROGRESS " + json.dumps(fields), flush=True)
+
+
+@contextlib.contextmanager
+def product_lock(raw: Path, product_id: str):
+    """Only one import per product at a time: both would write the same raw files."""
+    raw.mkdir(parents=True, exist_ok=True)
+    with open(raw / f".{product_id}.lock", "w") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ProductBusy(f"another import of {product_id} is already running") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def cube_digest(cube: np.ndarray) -> str:
+    """Checksum of the stored values (float32, NaN included), to recognise an unchanged import."""
+    return hashlib.blake2b(np.ascontiguousarray(cube, dtype=np.float32).tobytes(), digest_size=16).hexdigest()
+
+
+def unchanged_version(
+    conn, variable: str, kind: str, spec: GridSpec, month0: int, n_months: int, digest: str
+):
+    """The active version's id when it holds exactly these values on this grid, else None."""
+    r = conn.execute(
+        """SELECT id FROM grid_version WHERE variable = %s AND active AND kind = %s AND source->>'checksum' = %s
+           AND res_deg = %s AND lat0 = %s AND lon0 = %s AND ny = %s AND nx = %s AND month0 = %s AND n_months = %s""",
+        (variable, kind, digest, spec.res, spec.lat0, spec.lon0, spec.ny, spec.nx, month0, n_months),
+    ).fetchone()
+    return r["id"] if r else None
+
 
 # About 5° x 5° on the US Gulf Coast: land (Louisiana, east Texas, Houston) and sea (Gulf of
 # Mexico), so land-only and sea-only variables both have test cells.
@@ -49,6 +97,8 @@ class RunReport:
     process_s: float = 0.0
     versions: dict = field(default_factory=dict)
     skipped_files: list = field(default_factory=list)
+    no_data: list = field(default_factory=list)  # variables with no valid month in the files
+    notes: dict = field(default_factory=dict)  # variable -> what was masked after regridding
 
     def to_dict(self) -> dict:
         return self.__dict__
@@ -84,34 +134,54 @@ def target_spec(p: Product, mode: str) -> GridSpec:
 
 
 class MonthlyAccumulator:
-    """Sums and counts per month and variable on the target grid."""
+    """Monthly means for one variable on the target grid, streaming in time order.
 
-    def __init__(self, spec: GridSpec, variables: list[str], min_count: int):
+    Running sums are kept only for the months still being filled (inputs arrive sorted by
+    time, so at most a couple are open); finished months are stored as a float32 mean and a
+    uint16 count (so a late input can still be averaged in).  Memory is
+    about one float32 field per month instead of float64 sums and counts for every month of
+    every variable, which needed ~5 GB for MERRA-2 statistics at 0.5 degrees.
+    """
+
+    KEEP_OPEN = 2  # months kept open for slightly out-of-order inputs (e.g. north and south sea-ice files)
+
+    def __init__(self, spec: GridSpec, min_count: int):
         self.spec = spec
-        self.vars = variables
         self.min_count = min_count
-        self.sum: dict[tuple[str, int], np.ndarray] = {}
-        self.cnt: dict[tuple[str, int], np.ndarray] = {}
+        self.open: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        self.done: dict[int, tuple[np.ndarray, np.ndarray]] = {}  # month -> (mean float32, count uint16)
 
-    def add(self, var: str, month: int, field: np.ndarray) -> None:
-        key = (var, month)
+    def add(self, month: int, field: np.ndarray) -> None:
+        if month in self.done:  # a late input for a finished month: reopen it with its sums and counts
+            mean, cnt = self.done.pop(month)
+            c = cnt.astype(np.int32)
+            self.open[month] = (np.where(c > 0, np.nan_to_num(mean.astype(float)) * c, 0.0), c)
+        if month not in self.open:
+            self.open[month] = (np.zeros(field.shape), np.zeros(field.shape, np.int32))
+        s, c = self.open[month]
         ok = np.isfinite(field)
-        if key not in self.sum:
-            self.sum[key] = np.zeros(field.shape)
-            self.cnt[key] = np.zeros(field.shape, np.int32)
-        self.sum[key][ok] += field[ok]
-        self.cnt[key][ok] += 1
+        s[ok] += field[ok]
+        c[ok] += 1
+        for m in sorted(self.open)[: -self.KEEP_OPEN]:
+            self._finish(m)
 
-    def cube(self, var: str) -> tuple[int, np.ndarray] | None:
-        months = sorted(m for v, m in self.sum if v == var)
-        if not months:
+    def _finish(self, month: int) -> None:
+        s, c = self.open.pop(month)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = np.where(c > 0, s / c, np.nan).astype(np.float32)
+        self.done[month] = (mean, np.minimum(c, 65535).astype(np.uint16))
+
+    def cube(self) -> tuple[int, np.ndarray] | None:
+        for m in list(self.open):
+            self._finish(m)
+        if not self.done:
             return None
+        months = sorted(self.done)
         m0, m1 = months[0], months[-1]
         out = np.full((m1 - m0 + 1, self.spec.ny, self.spec.nx), np.nan, np.float32)
         for m in months:
-            s, c = self.sum[(var, m)], self.cnt[(var, m)]
-            with np.errstate(invalid="ignore", divide="ignore"):
-                out[m - m0] = np.where(c >= self.min_count, s / c, np.nan)
+            mean, cnt = self.done.pop(m)  # free each month as it is copied
+            out[m - m0] = np.where(cnt >= self.min_count, mean, np.nan)
         return m0, out
 
 
@@ -131,11 +201,7 @@ def _opendap_files(
     p: Product, mode: str, raw: Path, report: RunReport, limit: int | None
 ) -> list[tuple[int, Path, dict]]:
     start, end = time_range(p, mode)
-    granules = dl.cmr_granules(p.concept_id, start, end)
-    if limit:
-        granules = granules[-limit:]
-    if not granules:
-        raise RuntimeError(f"no granules for {p.id} in {start}..{end}")
+    granules = _granules(p, start, end, limit)
     session = dl.earthdata_session()
     folder = raw / p.id / mode
     folder.mkdir(parents=True, exist_ok=True)
@@ -164,8 +230,17 @@ def _opendap_files(
     else:
         i0, i1, j0, j1 = 0, ny - 1, 0, nx - 1
     ranges = {ny: (i0, i1), nx: (j0, j1)}
+    t_offset = 0
+    if p.multi_time:
+        # the time dimension is the one that is neither latitude nor longitude
+        dims = list(meta["vars"].values())[0]["dims"]
+        tsize = next((d[1] for d in dims if d[1] not in (ny, nx) and d[1] > 1), 0)
+        if tsize and mode == "test":
+            t_offset = max(0, tsize - 120)  # the most recent 10 years
+            ranges[tsize] = (t_offset, tsize - 1)
     out = []
-    for g in granules:
+    for k, g in enumerate(granules):
+        _progress(stage="download", done=k, total=len(granules))
         if not g.opendap_url:
             report.skipped_files.append(g.ur)
             continue
@@ -185,9 +260,84 @@ def _opendap_files(
             (
                 g.begin,
                 dest,
-                {"lats": lats[i0 : i1 + 1], "lons": lons[j0 : j1 + 1], "lon_first": lon_axis_first},
+                {
+                    "lats": lats[i0 : i1 + 1],
+                    "lons": lons[j0 : j1 + 1],
+                    "lon_first": lon_axis_first,
+                    "t_offset": t_offset,
+                    "end": g.end,
+                    # weekly grids cover a window (NASA-SSH: 10 days): date them by its centre, not its start
+                    "mid": _midpoint(g.begin, g.end) if p.cadence == "weekly" else g.begin,
+                },
             )
         )
+    return out
+
+
+def _parse_iso(s: str) -> dt.datetime:
+    return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def _midpoint(begin: str, end: str | None) -> str:
+    if not end:
+        return begin
+    b, e = _parse_iso(begin), _parse_iso(end)
+    return (b + (e - b) / 2).isoformat()
+
+
+def last_complete_month(p: Product, files: list) -> int | None:
+    """For daily and weekly products, the last month the files cover to its end.
+
+    The month still under way (OMI's latest file is a few days old) would otherwise be stored
+    as if complete, built from a few days.  Monthly products return None (no cut).
+    """
+    if p.cadence not in ("daily", "weekly") or p.access != "opendap":
+        return None
+    ends = [info.get("end") for _, _, info in files if isinstance(info, dict) and info.get("end")]
+    if not ends:
+        return None
+    nxt = (max(_parse_iso(e) for e in ends) + dt.timedelta(seconds=1)).date()
+    return nxt.year * 12 + nxt.month - 1 - 1
+
+
+def _granules(p: Product, start: str, end: str, limit: int | None) -> list:
+    granules = dl.cmr_granules(p.concept_id, start, end)
+    if p.granule_filter:
+        granules = [g for g in granules if p.granule_filter(g)]
+    # one file per name: some archives list the same file under two granule records (OB.DAAC)
+    seen: set[str] = set()
+    granules = [g for g in granules if not (g.name in seen or seen.add(g.name))]
+    if limit:
+        granules = granules[-limit:]
+    if not granules:
+        raise RuntimeError(f"no granules for {p.id} in {start}..{end}")
+    return granules
+
+
+def _download_files(
+    p: Product, mode: str, raw: Path, report: RunReport, limit: int | None
+) -> list[tuple[str, Path]]:
+    """Whole files over HTTPS with Earthdata Login (products without OPeNDAP).
+
+    The files are shared by the test and full runs; the test run crops to the test box after
+    reading, so a later full run reuses every file already on disk.
+    """
+    start, end = time_range(p, mode)
+    granules = _granules(p, start, end, limit)
+    session = dl.earthdata_session()
+    folder = raw / p.id
+    out = []
+    for k, g in enumerate(granules):
+        _progress(stage="download", done=k, total=len(granules))
+        if not g.data_url:
+            report.skipped_files.append(g.ur)
+            continue
+        dest = folder / re.sub(r"[^0-9A-Za-z._-]", "_", g.data_url.rstrip("/").split("/")[-1])
+        info = dl.download(g.data_url, dest, session)
+        report.files += 1
+        report.bytes += info["bytes"]
+        report.download_s += info["seconds"]
+        out.append((g.begin, dest))
     return out
 
 
@@ -221,7 +371,8 @@ def _public_files(p: Product, mode: str, raw: Path, report: RunReport, limit: in
     session = dl.PublicSession()
     folder = raw / p.id  # shared by test and full: the full run reuses the test downloads
     paths = []
-    for url, name in urls:
+    for k, (url, name) in enumerate(urls):
+        _progress(stage="download", done=k, total=len(urls))
         dest = folder / name
         try:
             info = dl.download(url, dest, session)
@@ -251,9 +402,12 @@ def _read_public(p: Product, path: Path) -> list[tuple[int, dict, np.ndarray, np
         lons = ds[lonn].values.astype(float)
         out = []
         times = ds["time"].values if "time" in ds.dims else [None]
+        by_bounds = _months_from_bounds(ds["time_bounds"].values) if "time_bounds" in ds.variables else None
         for k, tv in enumerate(times):
             if tv is None:
                 m = _month_from_name(path.name)
+            elif by_bounds is not None:
+                m = by_bounds[k]
             else:
                 ts = np.datetime64(tv, "D").astype(object)
                 m = ts.year * 12 + ts.month - 1
@@ -277,6 +431,36 @@ def _read_public(p: Product, path: Path) -> list[tuple[int, dict, np.ndarray, np
         ds.close()
 
 
+def _months_from_bounds(bounds) -> list[int]:
+    """The month each time step belongs to: the one holding most of its days.
+
+    GRACE-FO's solution for 22 Oct - 9 Nov 2018 has its midpoint on 1 November, so labelling by the
+    midpoint put two solutions in November and none in October.  When two steps still claim the
+    same month, the one with fewer days there moves to its next month if that is free.
+    """
+    def days_by_month(b0, b1) -> dict[int, int]:
+        d0 = np.datetime64(b0, "D").astype(object)
+        d1 = np.datetime64(b1, "D").astype(object)
+        out: dict[int, int] = {}
+        d = d0
+        while d <= d1:
+            m = d.year * 12 + d.month - 1
+            out[m] = out.get(m, 0) + 1
+            d += dt.timedelta(days=1)
+        return out
+
+    counts = [days_by_month(b[0], b[1]) for b in np.asarray(bounds)]
+    months = [max(c, key=lambda m: (c[m], -m)) for c in counts]
+    for k in range(1, len(months)):
+        if months[k] == months[k - 1]:
+            a, b = counts[k - 1], counts[k]
+            if a.get(months[k], 0) < b.get(months[k], 0) and (months[k] - 1) in a and (k < 2 or months[k - 2] != months[k] - 1):
+                months[k - 1] = months[k] - 1
+            elif (months[k] + 1) in b and (k + 1 >= len(months) or months[k + 1] != months[k] + 1):
+                months[k] = months[k] + 1
+    return months
+
+
 def _month_from_name(name: str) -> int:
     m = re.search(r"(\d{4})(\d{2})(?:\D|$)", name)
     if not m:
@@ -290,7 +474,7 @@ def _month_from_name(name: str) -> int:
 
 
 def _land_mask_for(conn, spec: GridSpec) -> np.ndarray | None:
-    got = read_mask(conn, "land", spec.res)
+    got = read_land_mask(conn, spec.res)
     if not got:
         return None
     g, lf = got
@@ -298,18 +482,72 @@ def _land_mask_for(conn, spec: GridSpec) -> np.ndarray | None:
     return lf[oi : oi + spec.ny, oj : oj + spec.nx]
 
 
+SEA_ICE_EDGE = 15.0  # %: the usual ice-edge threshold (NSIDC sea ice extent)
+
+
+def drop_sea_ice(conn, cube: np.ndarray, spec: GridSpec, m0: int, floor: float) -> str:
+    """Remove the cell-months of a sea-surface field that are frozen sea (in place).
+
+    A cell is dropped when any part of it had at least 15 % sea ice that month in the stored
+    NSIDC record, or its value is below ``floor``.  Months the ice record does not cover use the
+    same calendar month of the last five years it does cover (dropped if ice was there in any).
+    """
+    from megavir.store import active_versions, read_full
+
+    cube[cube < floor] = np.nan
+    v = active_versions(conn).get("sea_ice")
+    if v is None or v.kind != "real":
+        return f"values below {floor:g} dropped; no real sea-ice record to mask frozen sea"
+    k = int(round(spec.res / v.spec.res))
+    if k < 1 or abs(k * v.spec.res - spec.res) > 1e-6:
+        raise ValueError(f"cannot aggregate the {v.spec.res}° sea-ice grid to {spec.res}°")
+    ice = read_full(conn, v)  # (months, ny, nx) on the sea-ice grid, percent
+    n, ny, nx = ice.shape
+    coarse_spec = GridSpec(
+        spec.res, v.spec.lat0 + (k - 1) * v.spec.res / 2, v.spec.lon0 + (k - 1) * v.spec.res / 2, ny // k, nx // k
+    )
+    oi, oj = spec.offset_in(coarse_spec)
+    if oi < 0 or oj < 0 or oi + spec.ny > coarse_spec.ny or oj + spec.nx > coarse_spec.nx:
+        raise ValueError("the sea-ice grid does not cover this field's grid")
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        coarse = np.nanmax(ice[:, : ny // k * k, : nx // k * k].reshape(n, ny // k, k, nx // k, k), axis=(2, 4))
+    del ice
+    coarse = coarse[:, oi : oi + spec.ny, oj : oj + spec.nx]
+    frozen = np.nan_to_num(coarse, nan=0.0) >= SEA_ICE_EDGE
+    have = np.isfinite(coarse).any(axis=(1, 2))
+    months = m0 + np.arange(cube.shape[0])
+    ice_months = v.month0 + np.arange(n)
+    filled = 0
+    for i, m in enumerate(months):
+        j = int(m - v.month0)
+        if 0 <= j < n and have[j]:
+            mask = frozen[j]
+        else:  # outside the ice record: the same calendar month of the last five years it covers
+            same = np.flatnonzero((ice_months % 12 == m % 12) & have)[-5:]
+            mask = frozen[same].any(axis=0) if same.size else np.zeros(cube.shape[1:], bool)
+            filled += 1
+        cube[i][mask] = np.nan
+    note = f"values below {floor:g} and cell-months with >= {SEA_ICE_EDGE:g}% sea ice (NSIDC version {v.id}) dropped"
+    if filled:
+        note += f"; {filled} months beyond the ice record used the last five years' ice for that month"
+    return note
+
+
 def run(
     product_id: str, mode: str, conn, raw: Path, limit: int | None = None, activate: bool = True
 ) -> RunReport:
     if mode not in ("test", "full"):
         raise ValueError("mode must be 'test' or 'full'")
+    with product_lock(raw, product_id):
+        return _run(product_id, mode, conn, raw, limit, activate)
+
+
+def _run(product_id: str, mode: str, conn, raw: Path, limit: int | None, activate: bool) -> RunReport:
     p = PRODUCTS[product_id]
     report = RunReport(product_id, mode)
     spec = target_spec(p, mode)
-    var_ids = list(p.outputs)
-    acc = MonthlyAccumulator(spec, var_ids, p.min_per_month)
     regridders: dict[tuple, Regridder] = {}
-    t0 = time.time()
 
     def regrid(field: np.ndarray, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
         key = (lats[0], lats[-1], lats.size, lons[0], lons[-1], lons.size)
@@ -317,40 +555,89 @@ def run(
             regridders[key] = Regridder(NativeGrid.from_centres(lats, lons), spec)
         return regridders[key](field)
 
+    # 1. download (resumable; files stay on disk)
     if p.access == "opendap":
         files = _opendap_files(p, mode, raw, report, limit)
-        t0 = time.time()
-        for begin, path, info in files:
-            month = month_abs_from_iso(begin)
-            fields, la, lo = standard_fields(path, p, info["lats"], info["lons"], info["lon_first"])
-            for v in var_ids:
-                acc.add(v, month, regrid(p.outputs[v](fields, month), la, lo))
+    elif p.access == "download":
+        files = _download_files(p, mode, raw, report, limit)
     else:
-        paths = _public_files(p, mode, raw, report, limit)
-        t0 = time.time()
-        start, end = time_range(p, mode)
-        m_lo, m_hi = month_abs_from_iso(start), month_abs_from_iso(end)
-        for path in paths:
-            for month, fields, lats, lons in _read_public(p, path):
-                if not (m_lo <= month <= m_hi):
+        files = _public_files(p, mode, raw, report, limit)
+    t0 = time.time()
+
+    def records():
+        """(month, fields, lats, lons) from the local files, in time order."""
+        if p.access == "opendap":
+            for begin, path, info in files:
+                if p.multi_time:
+                    m0 = month_abs_from_iso(begin) + info["t_offset"]
+                    for k, fields, la, lo in multi_time_fields(
+                        path, p, info["lats"], info["lons"], info["lon_first"]
+                    ):
+                        yield m0 + k, fields, la, lo
                     continue
-                for v in var_ids:
-                    f = p.outputs[v](fields, month)
-                    f, la, lo = _std(f, lats, lons)
-                    acc.add(v, month, regrid(f, la, lo))
+                fields, la, lo = standard_fields(path, p, info["lats"], info["lons"], info["lon_first"])
+                yield month_abs_from_iso(info.get("mid") or begin), fields, la, lo
+        elif p.access == "download":
+            for begin, path in files:
+                yield from p.reader(path, begin)
+        else:
+            start, end = time_range(p, mode)
+            m_lo, m_hi = month_abs_from_iso(start), month_abs_from_iso(end)
+            for path in files:
+                for month, fields, lats, lons in _read_public(p, path):
+                    if m_lo <= month <= m_hi:
+                        yield month, fields, lats, lons
 
     land = _land_mask_for(conn, spec)
     kind = "test" if mode == "test" else "real"
     ds = DATASETS[p.id]
-    for v in var_ids:
-        got = acc.cube(v)
+    # 2. one variable at a time, so memory holds one variable's cube
+    outputs = list(p.outputs)
+    for i, v in enumerate(outputs):
+        _progress(stage="build", variable=v, index=i, total=len(outputs))
+        acc = MonthlyAccumulator(spec, p.min_per_month)
+        for month, fields, la, lo in records():
+            f = p.outputs[v](fields, month)
+            if p.projected:
+                acc.add(month, bin_to_grid(la, lo, f, spec))
+            elif p.access == "public":
+                f, la2, lo2 = _std(f, la, lo)
+                acc.add(month, regrid(f, la2, lo2))
+            else:
+                acc.add(month, regrid(f, la, lo))
+        got = acc.cube()
+        del acc
         if got is None:
+            report.no_data.append(v)
+            _progress(stage="stored", variable=v, action="no_data")
             continue
         m0, cube = got
+        last_full = last_complete_month(p, files)
+        if last_full is not None and m0 + cube.shape[0] - 1 > last_full:
+            keep = max(0, last_full - m0 + 1)
+            report.notes[f"{v}_cut"] = f"{cube.shape[0] - keep} unfinished month(s) left out"
+            cube = cube[:keep]
+            if keep == 0:
+                report.no_data.append(v)
+                continue
         dom = p.domain_mask.get(v)
-        if dom and land is not None:  # AIRS skin temperature split into ground and sea
+        if dom and land is not None:  # e.g. AIRS skin temperature split into ground and sea
             cube[:, (land < 0.5) if dom == "land" else (land >= 0.5)] = np.nan
+        if v in p.ice_mask:
+            report.notes[v] = drop_sea_ice(conn, cube, spec, m0, p.ice_mask[v])
         validation = validate_cube(v, cube, spec, m0, kind, raw.parent / "quicklook")
+        digest = cube_digest(cube)
+        same = unchanged_version(conn, v, kind, spec, m0, int(cube.shape[0]), digest) if activate else None
+        if same:  # identical to what is stored: keep the stored version (and its cached statistics)
+            report.versions[v] = {
+                "version": same,
+                "months": int(cube.shape[0]),
+                "validation": validation,
+                "unchanged": True,
+            }
+            _progress(stage="stored", variable=v, action="unchanged", version=same)
+            del cube
+            continue
         source = {
             "product": ds.product,
             "doi": ds.doi,
@@ -359,10 +646,14 @@ def run(
             "files": report.files,
             "bytes": report.bytes,
             "download_s": round(report.download_s, 1),
+            "checksum": digest,
         }
+        _progress(stage="swap", variable=v)
         vid = write_version(conn, v, kind, spec, m0, cube, VARIABLES[v].units, source, validation, activate)
         report.versions[v] = {"version": vid, "months": int(cube.shape[0]), "validation": validation}
-    conn.commit()
+        conn.commit()
+        _progress(stage="stored", variable=v, action="imported", version=vid)
+        del cube
     report.process_s = time.time() - t0
     return report
 

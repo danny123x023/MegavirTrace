@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { fmtP, fmtSigned } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
+import Panel from "@/components/Panel";
 
 type Card = {
   analysis_id: string; kind: string;
@@ -21,8 +23,41 @@ type Reply = {
   template_verdicts?: { analysis_id: string; headline: string; sentences: string[]; caveats: string[] }[];
   check?: { numbers_checked: number };
   suggestions?: string[];
+  timing?: { total_s: number; ai_calls: number };
 };
 type Turn = { q: string; r: Reply };
+type Progress = { step: "thinking" | "tool" | "check"; round?: number; tool?: string; variable?: string | null; places?: string[]; query?: string | null };
+
+/** Ask with progress: the server sends one JSON line per step, then the checked answer. */
+async function askWithProgress(body: unknown, onProgress: (p: Progress) => void): Promise<Reply> {
+  const res = await fetch("/api/ai/ask/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try { const j = await res.json(); if (typeof j.detail === "string") msg = j.detail; } catch { /* not JSON */ }
+    throw new ApiError(msg, res.status);
+  }
+  if (!res.body) return apiPost<Reply>("/ai/ask", body); // no streaming in this browser
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let result: Reply | null = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const ev = JSON.parse(line);
+      if (ev.type === "progress") onProgress(ev as Progress);
+      else if (ev.type === "result") result = ev.result as Reply;
+    }
+  }
+  if (!result) throw new Error("The answer did not arrive. Please try again.");
+  return result;
+}
 
 const EXAMPLES = [
   "Is the whole Earth really warming, and since when?",
@@ -31,16 +66,46 @@ const EXAMPLES = [
 ];
 
 export default function AskPage() {
+  const { lang, t } = useI18n();
+  const tr = t; // "t" is also the name of each turn below
   const [status, setStatus] = useState<{ enabled: boolean; provider: string; model: string | null } | null>(null);
   const [q, setQ] = useState("");
   const [tutor, setTutor] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [steps, setSteps] = useState<string[]>([]);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (!busy) return;
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
+  function stepText(p: Progress): string {
+    if (p.step === "check") return t("Checking every number against the computed results…");
+    if (p.step === "thinking") return p.round === 1 ? t("The AI is reading your question…") : t("The AI is reading the results and writing the answer…");
+    const places = p.places ?? [];
+    if (p.tool === "run_trend_analysis") return t("Running the {variable} analysis for {place}…", { variable: (p.variable ?? "").toLowerCase(), place: places[0] ?? "" });
+    if (p.tool === "compare_regions") return t("Comparing {variable} in {a} and {b}…", { variable: (p.variable ?? "").toLowerCase(), a: places[0] ?? "", b: places[1] ?? "" });
+    if (p.tool === "scan_region") return t("Testing every variable for {place}…", { place: places[0] ?? "" });
+    if (p.tool === "find_places") return t("Looking up “{query}”…", { query: p.query ?? "" });
+    return t("Looking up the variables…");
+  }
+  const [needQuestion, setNeedQuestion] = useState(false);
 
   useEffect(() => { apiGet<typeof status>("/ai/status").then(setStatus).catch(() => setStatus({ enabled: false, provider: "none", model: null })); }, []);
 
   async function ask(question: string) {
-    if (question.trim().length < 3) return;
+    if (question.trim().length < 3) {
+      setNeedQuestion(true);
+      document.getElementById("q")?.focus();
+      return;
+    }
+    setNeedQuestion(false);
+    setSteps([]);
+    setStartedAt(Date.now());
+    setNow(Date.now());
     setBusy(true);
     const history = turns.flatMap((t) => [
       { role: "user", content: t.q },
@@ -48,7 +113,7 @@ export default function AskPage() {
     ]).slice(-6);
     let r: Reply;
     try {
-      r = await apiPost<Reply>("/ai/ask", { question, mode: tutor ? "tutor" : "explain", history });
+      r = await askWithProgress({ question, mode: tutor ? "tutor" : "explain", history, lang }, (p) => setSteps((s) => [...s, stepText(p)]));
     } catch (e) {
       r = { mode: "error", reason: (e as Error).message };
     }
@@ -59,7 +124,7 @@ export default function AskPage() {
 
   return (
     <div>
-      <h1>Ask the AI scientist</h1>
+      <h1>{t("Ask the AI scientist")}</h1>
       <p className="lede">
         Ask in plain words. The AI turns your question into analyses run by MegavirTrace&apos;s engine, then explains them. It never computes:
         every number it writes is checked against the stored results, and if anything does not match you see the computed verdict instead.
@@ -68,36 +133,57 @@ export default function AskPage() {
       {status && !status.enabled && (
         <p className="error" role="note">
           The AI scientist is switched off on this server (no AI service is configured). Everything else works without it:{" "}
-          <Link href="/">explore</Link> or <Link href="/compare">compare</Link> any place.
+          <Link href="/explore">explore</Link> or <Link href="/compare">compare</Link> any place.
         </p>
       )}
 
       <section className="card" aria-label="Your question">
         <label htmlFor="q" className="label" style={{ fontWeight: 600 }}>Your question</label>
-        <textarea id="q" value={q} maxLength={600} onChange={(e) => setQ(e.target.value)} placeholder="For example: Is rainfall in the Sahel changing?" />
+        <textarea
+          id="q" value={q} maxLength={600} placeholder="For example: Is rainfall in the Sahel changing?"
+          aria-describedby={needQuestion ? "q-need" : undefined} aria-invalid={needQuestion || undefined}
+          onChange={(e) => { setQ(e.target.value); if (e.target.value.trim().length >= 3) setNeedQuestion(false); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask(q); }}
+        />
+        {needQuestion && <p id="q-need" className="small field-hint" role="alert">{t("Type a question first (at least 3 characters).")}</p>}
         <div className="row" style={{ marginTop: 8, justifyContent: "space-between" }}>
           <label className="row small">
             <input type="checkbox" checked={tutor} onChange={(e) => setTutor(e.target.checked)} />
             Tutor mode: guide me with questions instead of explaining
           </label>
-          <button type="button" className="primary" disabled={busy || !status?.enabled || q.trim().length < 3} onClick={() => ask(q)}>
-            {busy ? "Running the analyses…" : "Ask"}
+          <button type="button" className="primary" disabled={busy || status?.enabled === false} onClick={() => ask(q)}>
+            {busy ? t("Running the analyses…") : t("Ask")}
           </button>
         </div>
         <div className="chip-list" style={{ marginTop: 10 }}>
-          {EXAMPLES.map((e) => <button key={e} type="button" className="chip" disabled={!status?.enabled || busy} onClick={() => ask(e)}>{e}</button>)}
+          {EXAMPLES.map((e) => <button key={e} type="button" className="chip" disabled={status?.enabled === false || busy} onClick={() => ask(e)}>{e}</button>)}
         </div>
       </section>
 
+      {busy && (
+        <div className="card ai-progress" role="status" aria-live="polite">
+          <p className="ai-progress-head">
+            <span className="spinner-dot" aria-hidden="true" /> {t("Working on it…")}
+            {startedAt && <span className="muted"> {t("{s} s", { s: Math.max(0, Math.round((now - startedAt) / 1000)) })}</span>}
+          </p>
+          <ol className="ai-steps">
+            {steps.map((s, i) => <li key={i} className={i === steps.length - 1 ? "current" : "done"}>{s}</li>)}
+          </ol>
+        </div>
+      )}
+
       <div className="stack" style={{ marginTop: 16 }} aria-live="polite">
         {turns.map((t, i) => (
-          <section key={i} className="card" aria-label={`Answer ${i + 1}`}>
+          <Panel key={i} aria-label={`Answer ${i + 1}`}>
             <p className="muted small" style={{ marginTop: 0 }}>You asked: {t.q}</p>
             {t.r.mode === "answered" && t.r.answer && (
               <>
                 <h2>{t.r.answer.headline}</h2>
                 {t.r.answer.explanation.split(/\n+/).map((p, j) => <p key={j}>{p}</p>)}
-                <p className="small muted">✓ Number check passed: {t.r.check?.numbers_checked ?? 0} numbers match the stored analyses.</p>
+                <p className="small muted">
+                  ✓ Number check passed: {t.r.check?.numbers_checked ?? 0} numbers match the stored analyses.
+                  {t.r.timing && <> · {tr("Answered in {s} s", { s: t.r.timing.total_s })}</>}
+                </p>
                 {!!t.r.answer.follow_up_questions?.length && (
                   <div className="chip-list">
                     {t.r.answer.follow_up_questions.map((f) => <button key={f} type="button" className="chip" onClick={() => ask(f)}>{f}</button>)}
@@ -128,7 +214,7 @@ export default function AskPage() {
                 ))}
               </div>
             )}
-          </section>
+          </Panel>
         ))}
       </div>
       {status?.enabled && <p className="small muted">AI service: {status.provider} ({status.model}). Limits per visitor and per day keep costs bounded.</p>}

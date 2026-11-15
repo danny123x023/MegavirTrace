@@ -19,6 +19,10 @@ os.environ["MEGAVIR_DATABASE_URL"] = TEST_DB
 os.environ.setdefault("MEGAVIR_ALLOWED_ORIGINS", '["http://localhost:3000"]')
 os.environ["MEGAVIR_SERVE_KINDS"] = '["synthetic"]'
 os.environ["MEGAVIR_AI_PROVIDER"] = "none"
+# never the server's own Admin-panel AI settings (keys, active service)
+os.environ["MEGAVIR_AI_SETTINGS_FILE"] = os.path.join(
+    __import__("tempfile").mkdtemp(prefix="mt-ai-"), "ai_settings.json"
+)
 
 
 def _db_ok() -> bool:

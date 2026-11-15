@@ -1,3 +1,5 @@
+import { recall, remember, signalOffline } from "./offline";
+
 // Thin client for the MegavirTrace API (proxied at /api).  Every number shown comes from these
 // responses; the page never computes statistics itself.
 
@@ -8,6 +10,7 @@ export type Variable = {
   name: string;
   theme: string;
   units: string;
+  decimals?: number; // display precision for measured values
   domain: string;
   agg: string;
   definition: string;
@@ -16,6 +19,7 @@ export type Variable = {
   source_badge: string;
   year_units?: string | null;
   default_mode?: string;
+  i18n?: Record<string, Record<string, unknown>>;
   dataset_info: { product: string; title: string; archive: string; doi: string | null; paper_doi: string | null; citation: string; native_grid: string; record_start: string; cadence: string };
   data: null | { id: number; kind: "real" | "test" | "synthetic"; bbox: number[]; first_month: string; last_month: string; res_deg: number; validation?: Record<string, unknown> };
 };
@@ -30,6 +34,8 @@ export type CellMap = {
   res: number; lat: (number | null)[]; lon: (number | null)[]; frac: (number | null)[]; slope_per_decade: (number | null)[];
   p: (number | null)[]; q: (number | null)[]; passes: boolean[]; alpha_fdr: number; n_cells: number; n_pass: number;
   n_raw_significant: number; basis: string; caveat: string;
+  /** big regions: cells merged into block x block groups (res = native_res x block) */
+  native_res?: number; block?: number; scope?: "region" | "view"; view?: number[];
 } | { skipped: string };
 
 export type TrendResult = {
@@ -51,6 +57,7 @@ export type Stats = {
   robustness: { fragile: boolean; checks: { check: string; slope: number; keeps_sign: boolean }[] };
   unusual: { label: string; departure: number; sd_units: number }[];
   turning: null | { at: number; slope_before: number; slope_after: number; preferred: boolean };
+  acceleration: null | { tested: boolean; significant: boolean; kind: string | null; p?: number; slope_early?: number; slope_late?: number; split?: number; reason?: string };
   per_decade: { sen: number; sen_low: number; sen_high: number; ols: number; ols_low: number; ols_high: number };
 };
 
@@ -88,17 +95,139 @@ async function handle<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+// Admin panel and Data import: the administrator token is traded once for a session
+// (POST /admin/sessions); only the session is kept in the browser and sent, to /admin requests
+// only, as the X-Admin-Session header.  "Keep me signed in" keeps it across visits (localStorage,
+// 30 days on the server); otherwise it lasts for this tab (sessionStorage, 12 hours).
+const SESSION_KEY = "mt-admin-session";
+
+export function adminSession(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setAdminSession(secret: string | null, remember = false): void {
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem("mt-admin-token"); // left by earlier versions
+    if (secret) (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, secret);
+  } catch {
+    /* private mode */
+  }
+}
+
+function adminHeaders(path: string): Record<string, string> {
+  const secret = path.startsWith("/admin") ? adminSession() : null;
+  return secret ? { "X-Admin-Session": secret } : {};
+}
+
+/** Sign in with the administrator token; throws ApiError (403 wrong token, 429 too many tries). */
+export async function adminSignIn(token: string, remember: boolean): Promise<void> {
+  const r = await apiSend<{ session: string }>("POST", "/admin/sessions", { token, remember });
+  setAdminSession(r.session, remember);
+}
+
+export async function adminSignOut(): Promise<void> {
+  try {
+    await apiSend("DELETE", "/admin/sessions/current");
+  } finally {
+    setAdminSession(null);
+  }
+}
+
+/** Forget a session the server no longer knows (ended elsewhere or expired). */
+export function forgetAdminSession(): void {
+  setAdminSession(null);
+}
+
 export async function apiGet<T>(path: string, params?: Record<string, string | number | undefined>, signal?: AbortSignal): Promise<T> {
   const qs = params
     ? "?" + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)])).toString()
     : "";
-  return handle<T>(await fetch(`/api${path}${qs}`, { signal }));
+  const url = `/api${path}${qs}`;
+  const init = { signal, headers: adminHeaders(path) };
+  // Reading is safe to repeat: one retry after a dropped connection or a proxy/server error (a reused
+  // idle connection can be reset by the server just as it is reused).
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    await new Promise((r) => setTimeout(r, 300));
+    return handle<T>(await fetch(url, init));
+  }
+  if (res.status >= 500 && res.status !== 501) {
+    await new Promise((r) => setTimeout(r, 300));
+    if (!signal?.aborted) res = await fetch(url, init);
+  }
+  return handle<T>(res);
 }
 
-export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  return handle<T>(
-    await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal }),
-  );
+/** Requests that change something on the server (never answered from the offline copy). */
+export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { ...adminHeaders(path) };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  return handle<T>(await fetch(`/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined }));
+}
+
+/** keep = false: no offline copy on the device (large, short-lived results such as map detail) */
+export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal, keep = true): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+  } catch (err) {
+    // no connection: fall back to the copy kept on this device, if any
+    if ((err as Error).name !== "AbortError") {
+      const saved = recall<T>(path, body);
+      if (saved) {
+        signalOffline();
+        return saved;
+      }
+    }
+    throw err;
+  }
+  const value = await handle<T>(response);
+  if (keep) remember(path, body, value);
+  return value;
 }
 
 export const exportUrl = (id: string, format: string) => `/api/reports/${id}/export?format=${format}`;
+
+// ---- detective cases ---------------------------------------------------------------------
+
+export type CaseChart = {
+  kind: "month" | "trend" | "compare";
+  title?: string;
+  labels: string[];
+  t?: (number | null)[];
+  series: { key: string; label?: string; values: (number | null)[] }[];
+  highlight: number[];
+  units: string;
+  mean?: number;
+  trend?: { line: (number | null)[]; low: number; high: number };
+  per_decade_label?: string;
+};
+export type CaseVariable = { id: string; name: string; units: string; product: string; doi: string | null };
+export type CaseStep = {
+  kind: "month" | "trend" | "compare";
+  title: string;
+  look: string;
+  variable: CaseVariable;
+  explore: Record<string, string | number>;
+  finding?: string;
+  chart?: CaseChart;
+  region?: string;
+  analysis_id?: string | null;
+  error?: string;
+};
+export type CaseInfo = {
+  id: string; title: string; theme: string; kind: "event" | "change"; when: string; where: string;
+  story: string; question: string; takeaway: string; skills: string[]; n_steps: number;
+  variables: CaseVariable[]; regions: { label: string; bbox: number[] }[]; data_kind: string;
+};
+export type CaseSummary = CaseInfo & { evidence: { finding: string; title: string; chart: CaseChart } | null };
+export type CaseDetail = CaseInfo & { steps: CaseStep[]; key: number; lang: string };

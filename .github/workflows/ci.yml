@@ -112,6 +112,8 @@ jobs:
           uv run python -I -m megavir.ingest.cli full gistemp
           uv run python -I -m megavir.ingest.cli precompute temp_change
       - name: Start the API
+        env:
+          MEGAVIR_ADMIN_TOKEN: e2e-only-token  # throwaway, for the Admin panel sign-in test
         run: |
           nohup uv run uvicorn megavir.api.main:app --host 127.0.0.1 --port 8000 > api.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && break; sleep 2; done
@@ -125,6 +127,8 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:3000/ > /dev/null && break; sleep 2; done
       - name: Playwright flows and axe gate
         working-directory: web
+        env:
+          MEGAVIR_E2E_ADMIN_TOKEN: e2e-only-token
         run: npx playwright test
       - if: failure()
         run: tail -100 api.log web.log

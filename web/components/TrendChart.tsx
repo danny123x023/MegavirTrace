@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmt, fmtSigned, niceTicks, tickLabel } from "@/lib/format";
+import { fmt, fmtSigned, niceTicks, tickLabel, fmtValue } from "@/lib/format";
+import { unitText, useI18n } from "@/lib/i18n";
+import { FullscreenButton, useFullHeight, ViewSwitch } from "./Panel";
 
 export type ChartSeries = {
   key: string;
@@ -9,6 +11,7 @@ export type ChartSeries = {
   color: string; // CSS var
   values: (number | null)[];
   markers?: boolean;
+  connect?: boolean; // draw through missing values (sparse sample years)
 };
 
 type Props = {
@@ -20,11 +23,20 @@ type Props = {
   trend?: { line: (number | null)[]; slopeLow: number; slopeHigh: number; label: string } | null;
   height?: number;
   zeroLine?: boolean;
+  decimals?: number; // the variable's display precision for values (catalog); default 3 significant digits
+  /** points to mark (an event year), drawn as a ring with its label */
+  highlight?: number[];
+  /** a dashed reference level, e.g. the usual value */
+  refLine?: { value: number; label: string } | null;
 };
 
 const PAD = { left: 52, right: 16, top: 12, bottom: 30 };
 
-export default function TrendChart({ title, labels, t, series, units, trend, height = 300, zeroLine }: Props) {
+export default function TrendChart({ title, labels, t, series, units: unitsRaw, trend, height: baseHeight = 300, zeroLine, highlight = [], refLine, decimals }: Props) {
+  const val = (v: number | null | undefined) => (decimals === undefined ? fmt(v, 3) : fmtValue(v, decimals));
+  const height = useFullHeight(baseHeight);
+  const { t: tr, lang } = useI18n();
+  const units = unitText(unitsRaw, lang);
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState<number | null>(null);
@@ -64,6 +76,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
       }
     }
     if (zeroLine) ys.push(0);
+    if (refLine) ys.push(refLine.value);
     const xmin = Math.min(...xs), xmax = Math.max(...xs);
     let ymin = Math.min(...ys), ymax = Math.max(...ys);
     if (ymin === ymax) { ymin -= 1; ymax += 1; }
@@ -74,17 +87,17 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
     const Y = (v: number) => PAD.top + (1 - (v - y0) / (y1 - y0 || 1)) * ph;
     const xt = niceTicks(xmin, xmax, Math.max(2, Math.floor(pw / 90))).filter((v) => v >= xmin && v <= xmax);
     return { X, Y, yt, xt, pw, ph, fan };
-  }, [idx, t, series, trend, width, height, zeroLine]);
+  }, [idx, t, series, trend, width, height, zeroLine, refLine]);
 
   if (idx.length === 0) return <p className="muted">No values to plot.</p>;
   const { X, Y, yt, xt, fan } = geom;
 
-  const path = (vals: (number | null)[]) => {
+  const path = (vals: (number | null)[], connect = false) => {
     let d = "";
     let pen = false;
     for (const i of idx) {
       const v = vals[i];
-      if (v === null) { pen = false; continue; }
+      if (v === null) { if (!connect) pen = false; continue; }
       d += `${pen ? "L" : "M"}${X(t[i] as number).toFixed(1)},${Y(v).toFixed(1)}`;
       pen = true;
     }
@@ -119,9 +132,10 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
     <figure style={{ margin: 0 }}>
       <figcaption className="row" style={{ justifyContent: "space-between" }}>
         <strong>{title}</strong>
-        <button type="button" onClick={() => setShowTable((s) => !s)} aria-pressed={showTable}>
-          {showTable ? "Show chart" : "Show table"}
-        </button>
+        <span className="row" style={{ gap: 8 }}>
+          <FullscreenButton />
+          <ViewSwitch table={showTable} onChange={setShowTable} />
+        </span>
       </figcaption>
       {series.length + (trend ? 1 : 0) >= 2 && !showTable && (
         <div className="chart-legend" aria-hidden="true">
@@ -131,7 +145,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
           {trend && (
             <>
               <span className="key"><i style={{ background: "var(--series-2)" }} />{trend.label}</span>
-              {fan && <span className="key"><i className="band" style={{ background: "var(--series-2)" }} />95% range of the trend</span>}
+              {fan && <span className="key"><i className="band" style={{ background: "var(--series-2)" }} />{tr("95% range of the trend")}</span>}
             </>
           )}
         </div>
@@ -141,17 +155,17 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
           <table className="data">
             <thead>
               <tr>
-                <th scope="col">Period</th>
+                <th scope="col">{tr("Period")}</th>
                 {series.map((s) => <th scope="col" key={s.key}>{s.label} ({units})</th>)}
-                {trend && <th scope="col">Trend line ({units})</th>}
+                {trend && <th scope="col">{tr("Trend line")} ({units})</th>}
               </tr>
             </thead>
             <tbody>
               {idx.map((i) => (
-                <tr key={i}>
-                  <td>{labels[i]}</td>
-                  {series.map((s) => <td key={s.key}>{fmt(s.values[i], 3)}</td>)}
-                  {trend && <td>{fmt(trend.line[i], 3)}</td>}
+                <tr key={i} className={highlight.includes(i) ? "row-marked" : undefined}>
+                  <td>{labels[i]}{highlight.includes(i) ? ` (${tr("marked")})` : ""}</td>
+                  {series.map((s) => <td key={s.key}>{val(s.values[i])}</td>)}
+                  {trend && <td>{val(trend.line[i])}</td>}
                 </tr>
               ))}
             </tbody>
@@ -163,7 +177,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
           className="chart-wrap"
           tabIndex={0}
           role="img"
-          aria-label={`${title}. ${idx.length} values from ${labels[idx[0]]} to ${labels[idx[idx.length - 1]]}, in ${units}. Use the left and right arrow keys to read values, or open the table.`}
+          aria-label={tr("{title}. {n} values from {a} to {b}, in {units}. Use the left and right arrow keys to read values, or open the table.", { title, n: idx.length, a: labels[idx[0]], b: labels[idx[idx.length - 1]], units })}
           onMouseMove={(e) => setHover(nearest(e.clientX))}
           onMouseLeave={() => setHover(null)}
           onKeyDown={onKey}
@@ -190,13 +204,34 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
             )}
             {series.map((s) => (
               <g key={s.key}>
-                <path d={path(s.values)} fill="none" stroke={s.color} strokeWidth={many ? 1.25 : 2} strokeLinejoin="round" strokeLinecap="round" />
-                {s.markers !== false && !many && idx.map((i) => s.values[i] !== null && (
+                <path d={path(s.values, s.connect)} fill="none" stroke={s.color} strokeWidth={many ? 1.25 : 2} strokeLinejoin="round" strokeLinecap="round" />
+                {s.markers !== false && (!many || s.connect) && idx.map((i) => s.values[i] !== null && (
                   <circle key={i} cx={X(t[i] as number)} cy={Y(s.values[i] as number)} r={4} fill={s.color} stroke="var(--surface-1)" strokeWidth={2} />
                 ))}
               </g>
             ))}
             {trend && <path d={path(trend.line)} fill="none" stroke="var(--series-2)" strokeWidth={2} strokeLinecap="round" />}
+            {refLine && (
+              <g>
+                <line x1={PAD.left} x2={width - PAD.right} y1={Y(refLine.value)} y2={Y(refLine.value)} stroke="var(--text-secondary)" strokeWidth={1.25} strokeDasharray="5 4" />
+                <text x={width - PAD.right} y={Y(refLine.value) - 5} textAnchor="end" fontSize={11} fill="var(--text-secondary)" className="chart-label">{refLine.label}</text>
+              </g>
+            )}
+            {highlight.map((i) => {
+              const v = series[0]?.values[i];
+              if (v === null || v === undefined || t[i] === null) return null;
+              const cx = X(t[i] as number), cy = Y(v);
+              const above = cy > PAD.top + 22;
+              return (
+                <g key={`hl-${i}`} className="chart-highlight">
+                  <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="var(--text-primary)" strokeWidth={2} />
+                  <text
+                    x={Math.min(Math.max(cx, PAD.left + 16), width - PAD.right - 16)} y={above ? cy - 13 : cy + 22}
+                    textAnchor="middle" fontSize={12} fontWeight={700} fill="var(--text-primary)" className="chart-label"
+                  >{labels[i].replace(/ (DJF|MAM|JJA|SON)$/, "")}</text>
+                </g>
+              );
+            })}
             {hover !== null && (
               <g>
                 <line x1={hx} x2={hx} y1={PAD.top} y2={height - PAD.bottom} stroke="var(--axis)" strokeWidth={1} />
@@ -211,11 +246,11 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
               <div className="t-label">{labels[hover]}</div>
               {series.map((s) => (
                 <div key={s.key} className="tabular">
-                  <span className="key"><i style={{ background: s.color }} /></span> {s.label}: <strong>{fmt(s.values[hover], 3)}</strong> {units}
+                  <span className="key"><i style={{ background: s.color }} /></span> {s.label}: <strong>{val(s.values[hover])}</strong> {units}
                 </div>
               ))}
               {trend && trend.line[hover] !== null && (
-                <div className="tabular">Trend line: {fmtSigned(trend.line[hover], 3)} {units}</div>
+                <div className="tabular">{tr("Trend line: {v} {units}", { v: fmtSigned(trend.line[hover], 3), units })}</div>
               )}
             </div>
           )}
@@ -223,7 +258,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
       )}
       <p className="visually-hidden" aria-live="polite">
         {hover !== null && !showTable
-          ? `${labels[hover]}: ` + series.map((s) => `${s.label} ${fmt(s.values[hover], 3)} ${units}`).join("; ")
+          ? `${labels[hover]}: ` + series.map((s) => `${s.label} ${val(s.values[hover])} ${units}`).join("; ")
           : ""}
       </p>
     </figure>
