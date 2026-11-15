@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const PAGES = ["/", "/compare", "/related", "/start", "/ask", "/methods"];
+const PAGES = ["/", "/compare", "/related", "/start", "/ask", "/methods", "/imports"];
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} theme`, () => {
@@ -138,3 +138,26 @@ test("header: full-screen layout and dark mode switches apply and persist", asyn
   await expect(html).toHaveAttribute("data-theme", "light");
   await page.close();
 });
+
+test("data import dashboard: NASA sources, history and stored data (read-only)", async ({ page }) => {
+  await page.goto("/imports");
+  await expect(page.getByRole("heading", { name: "Data import dashboard" })).toBeVisible();
+  for (const h of ["NASA Earthdata account", "1. Available from NASA", "2. Import progress", "3. In the database"]) {
+    await expect(page.getByRole("heading", { name: h })).toBeVisible();
+  }
+  // every source is listed; GISTEMP is stored as real data in every test setup
+  const sources = page.locator("#cat-h").locator("xpath=ancestor::section").locator("tbody tr");
+  await expect(sources).toHaveCount(17);
+  const stored = page.locator("#db-h").locator("xpath=ancestor::section");
+  await expect(stored.getByRole("row", { name: /Surface temperature change/ })).toContainText("Real NASA data");
+  await stored.getByRole("button", { name: /^Nothing stored/ }).click();
+  await expect(stored.getByRole("row", { name: /Surface temperature change/ })).toHaveCount(0);
+  // the web app's proxy hides the visitor's address, so even on the server the page needs the token
+  await expect(page.getByText("Viewing only: imports need the administrator token")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Administrator sign-in" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Import selected/ })).toBeDisabled();
+  await page.getByLabel("Administrator token").fill("not-the-token");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByText("That token is not right.")).toBeVisible();
+});
+

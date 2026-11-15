@@ -92,11 +92,44 @@ async function handle<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+// Import dashboard: actions from another computer need the administrator token.  It is kept for
+// this browser tab only (sessionStorage, never a cookie) and sent only to /admin requests.
+const ADMIN_KEY = "mt-admin-token";
+
+export function adminToken(): string | null {
+  try {
+    return sessionStorage.getItem(ADMIN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAdminToken(token: string | null): void {
+  try {
+    if (token) sessionStorage.setItem(ADMIN_KEY, token);
+    else sessionStorage.removeItem(ADMIN_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
+function adminHeaders(path: string): Record<string, string> {
+  const token = path.startsWith("/admin") ? adminToken() : null;
+  return token ? { "X-Admin-Token": token } : {};
+}
+
 export async function apiGet<T>(path: string, params?: Record<string, string | number | undefined>, signal?: AbortSignal): Promise<T> {
   const qs = params
     ? "?" + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)])).toString()
     : "";
-  return handle<T>(await fetch(`/api${path}${qs}`, { signal }));
+  return handle<T>(await fetch(`/api${path}${qs}`, { signal, headers: adminHeaders(path) }));
+}
+
+/** Requests that change something on the server (never answered from the offline copy). */
+export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { ...adminHeaders(path) };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  return handle<T>(await fetch(`/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined }));
 }
 
 export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {

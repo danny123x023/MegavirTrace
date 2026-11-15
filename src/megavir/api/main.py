@@ -29,6 +29,7 @@ from megavir.places.presets import PRESETS
 from megavir.store import connect
 
 from . import service
+from .admin_routes import router as admin_router
 from .security import OriginAndHeaders
 
 app = FastAPI(
@@ -40,6 +41,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 app.add_middleware(OriginAndHeaders)
+app.include_router(admin_router)  # import dashboard (/admin/*)
 
 
 @app.exception_handler(service.AnalysisError)

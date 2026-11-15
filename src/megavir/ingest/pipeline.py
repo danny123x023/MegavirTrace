@@ -13,9 +13,13 @@ product (to plan the full download).
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import fcntl
+import hashlib
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -33,6 +37,49 @@ from .validate import validate_cube
 
 log = logging.getLogger("megavir.ingest")
 
+
+class ProductBusy(RuntimeError):
+    """Another import of the same product is running (command line or dashboard)."""
+
+
+def _progress(**fields) -> None:
+    """One machine-readable progress line for the import dashboard's job runner (MEGAVIR_PROGRESS=1)."""
+    if os.environ.get("MEGAVIR_PROGRESS") == "1":
+        print("PROGRESS " + json.dumps(fields), flush=True)
+
+
+@contextlib.contextmanager
+def product_lock(raw: Path, product_id: str):
+    """Only one import per product at a time: both would write the same raw files."""
+    raw.mkdir(parents=True, exist_ok=True)
+    with open(raw / f".{product_id}.lock", "w") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ProductBusy(f"another import of {product_id} is already running") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def cube_digest(cube: np.ndarray) -> str:
+    """Checksum of the stored values (float32, NaN included), to recognise an unchanged import."""
+    return hashlib.blake2b(np.ascontiguousarray(cube, dtype=np.float32).tobytes(), digest_size=16).hexdigest()
+
+
+def unchanged_version(
+    conn, variable: str, kind: str, spec: GridSpec, month0: int, n_months: int, digest: str
+):
+    """The active version's id when it holds exactly these values on this grid, else None."""
+    r = conn.execute(
+        """SELECT id FROM grid_version WHERE variable = %s AND active AND kind = %s AND source->>'checksum' = %s
+           AND res_deg = %s AND lat0 = %s AND lon0 = %s AND ny = %s AND nx = %s AND month0 = %s AND n_months = %s""",
+        (variable, kind, digest, spec.res, spec.lat0, spec.lon0, spec.ny, spec.nx, month0, n_months),
+    ).fetchone()
+    return r["id"] if r else None
+
+
 # About 5° x 5° on the US Gulf Coast: land (Louisiana, east Texas, Houston) and sea (Gulf of
 # Mexico), so land-only and sea-only variables both have test cells.
 TEST_BOX = (-95.0, 27.5, -90.0, 32.5)  # west, south, east, north
@@ -49,6 +96,7 @@ class RunReport:
     process_s: float = 0.0
     versions: dict = field(default_factory=dict)
     skipped_files: list = field(default_factory=list)
+    no_data: list = field(default_factory=list)  # variables with no valid month in the files
 
     def to_dict(self) -> dict:
         return self.__dict__
@@ -189,7 +237,8 @@ def _opendap_files(
             t_offset = max(0, tsize - 120)  # the most recent 10 years
             ranges[tsize] = (t_offset, tsize - 1)
     out = []
-    for g in granules:
+    for k, g in enumerate(granules):
+        _progress(stage="download", done=k, total=len(granules))
         if not g.opendap_url:
             report.skipped_files.append(g.ur)
             continue
@@ -244,7 +293,8 @@ def _download_files(
     session = dl.earthdata_session()
     folder = raw / p.id
     out = []
-    for g in granules:
+    for k, g in enumerate(granules):
+        _progress(stage="download", done=k, total=len(granules))
         if not g.data_url:
             report.skipped_files.append(g.ur)
             continue
@@ -287,7 +337,8 @@ def _public_files(p: Product, mode: str, raw: Path, report: RunReport, limit: in
     session = dl.PublicSession()
     folder = raw / p.id  # shared by test and full: the full run reuses the test downloads
     paths = []
-    for url, name in urls:
+    for k, (url, name) in enumerate(urls):
+        _progress(stage="download", done=k, total=len(urls))
         dest = folder / name
         try:
             info = dl.download(url, dest, session)
@@ -369,6 +420,11 @@ def run(
 ) -> RunReport:
     if mode not in ("test", "full"):
         raise ValueError("mode must be 'test' or 'full'")
+    with product_lock(raw, product_id):
+        return _run(product_id, mode, conn, raw, limit, activate)
+
+
+def _run(product_id: str, mode: str, conn, raw: Path, limit: int | None, activate: bool) -> RunReport:
     p = PRODUCTS[product_id]
     report = RunReport(product_id, mode)
     spec = target_spec(p, mode)
@@ -417,7 +473,9 @@ def run(
     kind = "test" if mode == "test" else "real"
     ds = DATASETS[p.id]
     # 2. one variable at a time, so memory holds one variable's cube
-    for v in p.outputs:
+    outputs = list(p.outputs)
+    for i, v in enumerate(outputs):
+        _progress(stage="build", variable=v, index=i, total=len(outputs))
         acc = MonthlyAccumulator(spec, p.min_per_month)
         for month, fields, la, lo in records():
             f = p.outputs[v](fields, month)
@@ -431,12 +489,26 @@ def run(
         got = acc.cube()
         del acc
         if got is None:
+            report.no_data.append(v)
+            _progress(stage="stored", variable=v, action="no_data")
             continue
         m0, cube = got
         dom = p.domain_mask.get(v)
         if dom and land is not None:  # e.g. AIRS skin temperature split into ground and sea
             cube[:, (land < 0.5) if dom == "land" else (land >= 0.5)] = np.nan
         validation = validate_cube(v, cube, spec, m0, kind, raw.parent / "quicklook")
+        digest = cube_digest(cube)
+        same = unchanged_version(conn, v, kind, spec, m0, int(cube.shape[0]), digest) if activate else None
+        if same:  # identical to what is stored: keep the stored version (and its cached statistics)
+            report.versions[v] = {
+                "version": same,
+                "months": int(cube.shape[0]),
+                "validation": validation,
+                "unchanged": True,
+            }
+            _progress(stage="stored", variable=v, action="unchanged", version=same)
+            del cube
+            continue
         source = {
             "product": ds.product,
             "doi": ds.doi,
@@ -445,10 +517,13 @@ def run(
             "files": report.files,
             "bytes": report.bytes,
             "download_s": round(report.download_s, 1),
+            "checksum": digest,
         }
+        _progress(stage="swap", variable=v)
         vid = write_version(conn, v, kind, spec, m0, cube, VARIABLES[v].units, source, validation, activate)
         report.versions[v] = {"version": vid, "months": int(cube.shape[0]), "validation": validation}
         conn.commit()
+        _progress(stage="stored", variable=v, action="imported", version=vid)
         del cube
     report.process_s = time.time() - t0
     return report

@@ -102,6 +102,24 @@ NASA's cloud OPeNDAP. The variable paths are read from each product's DMR at run
 netCDF products all arrive as netCDF4. Each run writes `data/ingest_<mode>_report.json` and a quick-look map
 per variable in `data/quicklook/`.
 
+### Data import dashboard
+
+The **Data import** page (`/imports`) shows what NASA holds now for each product (from NASA's public
+catalogues), what is stored and for how long, and runs imports as background jobs with live progress. Each job
+runs the same `megavir-ingest full <product>` as above, then records what happened to every variable:
+imported, unchanged (identical data keeps the stored version), skipped or failed. The page can also check that
+the Earthdata Login works for every product, and replace or remove it (it is written only to the netrc file,
+owner-only, never to the database).
+
+Anyone can view the page. Imports, deletions and account changes need the administrator token, because the
+web app's proxy hides the visitor's address. Read it on the server with:
+
+```bash
+$I admin-token   # MEGAVIR_ADMIN_TOKEN from .env, or a random one kept in data/admin_token
+```
+
+An import of a product never runs twice at once: the dashboard and the command line share a per-product lock.
+
 ### The AI scientist (optional, off by default)
 
 Set it up in `.env`, never in the browser:

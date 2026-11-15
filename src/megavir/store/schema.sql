@@ -91,3 +91,26 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     tokens_out  BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (day, outcome)
 );
+
+-- Import dashboard (also created on first use by megavir.imports.state)
+CREATE TABLE IF NOT EXISTS import_job (
+    id           BIGSERIAL PRIMARY KEY,
+    product      TEXT NOT NULL,
+    variables    TEXT[] NOT NULL,
+    mode         TEXT NOT NULL DEFAULT 'full',
+    status       TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed')),
+    requested_by TEXT NOT NULL DEFAULT '',          -- 'local' | 'admin'
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at   TIMESTAMPTZ,
+    finished_at  TIMESTAMPTZ,
+    progress     JSONB NOT NULL DEFAULT '{}'::jsonb, -- stage, done, total, variable
+    results      JSONB NOT NULL DEFAULT '{}'::jsonb, -- variable -> {action, version, months, detail}
+    summary      TEXT NOT NULL DEFAULT '',
+    log_tail     TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS import_job_status ON import_job (status, id);
+CREATE TABLE IF NOT EXISTS import_state (
+    key        TEXT PRIMARY KEY,
+    value      JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -7,7 +7,11 @@
     megavir-ingest test PRODUCT|all  # test box, recent years
     megavir-ingest full PRODUCT|all  # whole globe, whole record (after development)
     megavir-ingest gistemp-check     # our GISTEMP global series against NASA's official one
+    megavir-ingest access-check      # can this server download each Earthdata product?
+    megavir-ingest admin-token       # the import dashboard's administrator token
     megavir-ingest status
+
+The import dashboard (web page "Data import") runs the same commands as background jobs.
 
 Run with ``python -I -m megavir.ingest.cli`` so nothing in the data folders is importable.
 """
@@ -131,6 +135,9 @@ def main(argv: list[str] | None = None) -> None:
         m.add_argument("product", help="product id or 'all'")
         m.add_argument("--limit", type=int, default=None, help="only the newest N files (smoke runs)")
         m.add_argument("--no-activate", action="store_true")
+        m.add_argument(
+            "--report-json", type=Path, default=None, help="also write this run's reports to a file"
+        )
     pc = sub.add_parser(
         "precompute", help="compute and store statistics for presets and countries (once per data version)"
     )
@@ -142,6 +149,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     gc.add_argument("variables", nargs="*", default=["air_temp", "rainfall"])
     gc.add_argument("--points", type=int, default=5, help="points per side of the grid across the test box")
+    sub.add_parser("access-check", help="check that each Earthdata product can be downloaded (prints JSON)")
+    sub.add_parser("admin-token", help="print the import dashboard's administrator token (created if needed)")
     sub.add_parser("status")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -167,11 +176,14 @@ def main(argv: list[str] | None = None) -> None:
         print(build_synthetic(conn, years=args.years))
     elif args.cmd in ("test", "full"):
         from .download import LoginRequired
-        from .pipeline import run
+        from .pipeline import ProductBusy, run
         from .products import PRODUCTS
 
         todo = list(PRODUCTS) if args.product == "all" else [args.product]
-        reports = []
+        unknown = [pid for pid in todo if pid not in PRODUCTS]
+        if unknown:
+            raise SystemExit(f"unknown product: {', '.join(unknown)}")
+        reports, failed = [], False
         for pid in todo:
             t0 = time.time()
             try:
@@ -200,17 +212,32 @@ def main(argv: list[str] | None = None) -> None:
                     print(
                         f"  {var}: v{info['version']} {info['months']} months, valid {val['valid_share']:.0%}, mean {val['area_mean']}"
                     )
-            except LoginRequired as e:
+            except (LoginRequired, ProductBusy) as e:
                 conn.rollback()
                 print(f"{pid}: SKIPPED, {e}", file=sys.stderr)
                 reports.append({"product": pid, "skipped": str(e)})
+            except Exception as e:  # noqa: BLE001 - record it, carry on with the next product
+                conn.rollback()
+                logging.exception("%s failed", pid)
+                reports.append({"product": pid, "error": f"{type(e).__name__}: {e}"[:500]})
+                failed = True
         log_path = settings().data_dir / f"ingest_{args.cmd}_report.json"
         old = json.loads(log_path.read_text()) if log_path.exists() else {}
         for r in reports:
             old[r["product"]] = r
-        log_path.write_text(
-            json.dumps(old, indent=1, default=lambda o: o.tolist() if isinstance(o, np.ndarray) else str(o))
-        )
+
+        def dump(o) -> str:
+            return json.dumps(
+                o, indent=1, default=lambda x: x.tolist() if isinstance(x, np.ndarray) else str(x)
+            )
+
+        log_path.write_text(dump(old))
+        if args.report_json:
+            args.report_json.parent.mkdir(parents=True, exist_ok=True)
+            args.report_json.write_text(dump(reports))
+        if failed:
+            conn.close()
+            raise SystemExit(1)
     elif args.cmd == "precompute":
         cmd_precompute(conn, args.variables, args.countries)
     elif args.cmd == "giovanni-check":
@@ -225,6 +252,16 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"{var}: not checked: {e}", file=sys.stderr)
     elif args.cmd == "gistemp-check":
         print(json.dumps(cmd_gistemp_check(conn), indent=1))
+    elif args.cmd == "admin-token":
+        from megavir.imports.admin import admin_token, token_file, token_source
+
+        print(admin_token())
+        where = "MEGAVIR_ADMIN_TOKEN" if token_source() == "setting" else str(token_file())
+        print(f"(from {where}; enter it on the Data import page)", file=sys.stderr)
+    elif args.cmd == "access-check":
+        from .access import check_access
+
+        print(json.dumps(check_access()))
     elif args.cmd == "status":
         cmd_status(conn)
     conn.close()

@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # API rate limits for the open data API (FR17) and analysis endpoints
     analysis_per_minute_per_ip: int = 60
 
+    # Import dashboard: actions are allowed from this computer, or with this token (sent by the
+    # page as the X-Admin-Token header).  Empty = this computer only.
+    admin_token: str = ""
+    # Where the Earthdata Login is kept (default: $NETRC, else ~/.netrc).
+    netrc_path: str = ""
+
 
 @lru_cache(maxsize=1)
 def settings() -> Settings:

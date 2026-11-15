@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/start", label: "Start here" },
   { href: "/ask", label: "Ask the AI" },
   { href: "/methods", label: "Method" },
+  { href: "/imports", label: "Data import" },
 ];
 
 const ICON = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
