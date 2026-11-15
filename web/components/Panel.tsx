@@ -116,6 +116,32 @@ export function FullscreenButton({ corner = false }: { corner?: boolean }) {
   );
 }
 
+const CHART_ICON = "M3 3v18h18M7 15l4-5 3 3 5-7";
+const TABLE_ICON = "M3 4h18v16H3zM3 10h18M3 15h18M9 4v16";
+
+/** Chart or table: two icon buttons (a line chart and a grid); the one shown is pressed. */
+export function ViewSwitch({ table, onChange }: { table: boolean; onChange: (table: boolean) => void }) {
+  const { t } = useI18n();
+  const views = [
+    { isTable: false, label: t("Show chart"), d: CHART_ICON },
+    { isTable: true, label: t("Show table"), d: TABLE_ICON },
+  ];
+  return (
+    <span className="segmented view-switch" role="group" aria-label={t("Chart or table")}>
+      {views.map((v) => (
+        <button
+          key={v.label} type="button" aria-label={v.label} title={v.label} aria-pressed={table === v.isTable}
+          onClick={() => table !== v.isTable && onChange(v.isTable)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d={v.d} />
+          </svg>
+        </button>
+      ))}
+    </span>
+  );
+}
+
 /** Height for a chart: its usual height, or most of the screen while its Panel is full screen. */
 export function useFullHeight(base: number, reserve = 230): number {
   const panel = usePanel();

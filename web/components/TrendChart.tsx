@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt, fmtSigned, niceTicks, tickLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import { FullscreenButton, useFullHeight } from "./Panel";
+import { FullscreenButton, useFullHeight, ViewSwitch } from "./Panel";
 
 export type ChartSeries = {
   key: string;
@@ -131,9 +131,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
         <strong>{title}</strong>
         <span className="row" style={{ gap: 8 }}>
           <FullscreenButton />
-          <button type="button" onClick={() => setShowTable((s) => !s)} aria-pressed={showTable}>
-            {showTable ? tr("Show chart") : tr("Show table")}
-          </button>
+          <ViewSwitch table={showTable} onChange={setShowTable} />
         </span>
       </figcaption>
       {series.length + (trend ? 1 : 0) >= 2 && !showTable && (

@@ -93,6 +93,7 @@ const ES: Record<string, string> = {
   // chart
   "Show table": "Ver tabla",
   "Show chart": "Ver gráfico",
+  "Chart or table": "Gráfico o tabla",
   Period: "Periodo",
   "Trend line": "Línea de tendencia",
   "{title}. {n} values from {a} to {b}, in {units}. Use the left and right arrow keys to read values, or open the table.":

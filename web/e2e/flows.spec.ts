@@ -31,7 +31,17 @@ test("explore: verdict, chart, map, table view and downloads", async ({ page }) 
   await page.goto("/");
   await expect(page.locator(".verdict h2")).toContainText(/per decade|no clear trend|mixed/);
   await expect(page.getByRole("img", { name: /values from/ })).toBeVisible();
-  await page.getByRole("button", { name: "Show table" }).first().click();
+  // the chart / table switch: two icon buttons, the view shown is pressed
+  const toTable = page.getByRole("button", { name: "Show table" }).first();
+  const toChart = page.getByRole("button", { name: "Show chart" }).first();
+  await expect(toChart).toHaveAttribute("aria-pressed", "true");
+  await expect(toTable).toHaveAttribute("aria-pressed", "false");
+  await toTable.click();
+  await expect(page.getByRole("table").first()).toBeVisible();
+  await expect(toTable).toHaveAttribute("aria-pressed", "true");
+  await toChart.click();
+  await expect(page.getByRole("img", { name: /values from/ })).toBeVisible();
+  await toTable.click();
   await expect(page.getByRole("table").first()).toBeVisible();
   await expect(page.getByRole("link", { name: "CSV" })).toHaveAttribute("href", /export\?format=csv/);
   const nb = await page.request.get(await page.getByRole("link", { name: /Notebook/ }).getAttribute("href") as string);

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fmt, fmtP } from "@/lib/format";
-import { FullscreenButton, useFullHeight } from "./Panel";
+import { FullscreenButton, useFullHeight, ViewSwitch } from "./Panel";
 
 // Correlation by lag: one series of columns (slot 1); the strongest link is marked in slot 2 and named
 // in the legend, so identity never rests on colour alone.  Reference lines are solid hairlines.
@@ -44,7 +44,7 @@ export default function LagChart({ lags, r, p, n, best, rNeeded, labelA, labelB 
         <strong>How closely they move together at each lag</strong>
         <span className="row" style={{ gap: 8 }}>
           <FullscreenButton />
-          <button type="button" onClick={() => setTable((t) => !t)} aria-pressed={table}>{table ? "Show chart" : "Show table"}</button>
+          <ViewSwitch table={table} onChange={setTable} />
         </span>
       </figcaption>
       {!table && (
