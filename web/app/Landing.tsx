@@ -295,7 +295,7 @@ export default function Landing() {
     return () => { gone = true; };
   }, [lang]);
 
-  const nVars = summary?.variables ?? 22;
+  const nVars = summary?.variables ?? 31; // until the numbers arrive
   const nCases = summary?.cases ?? 20;
   const theme = (th: string) => (lang === "es" ? THEME_ES[th] ?? th : th);
 
@@ -350,11 +350,17 @@ export default function Landing() {
 
       {summary?.hero && <Stripes hero={summary.hero} />}
 
-      <section className="lp-stats lp-reveal" aria-label={t("MegavirTrace in numbers")}>
-        <div className="lp-stat"><strong><CountUp value={nVars} /></strong><span>{t("measurements of the Earth")}</span></div>
-        <div className="lp-stat"><strong><CountUp value={summary?.products.length ?? 17} /></strong><span>{t("NASA data products")}</span></div>
-        <div className="lp-stat"><strong>{summary?.first_month?.slice(0, 4) ?? "1880"}</strong><span>{t("first year on record")}</span></div>
-        <div className="lp-stat"><strong><CountUp value={nCases} /></strong><span>{t("detective cases")}</span></div>
+      <section className="lp-stats lp-reveal" aria-label={t("MegavirTrace in numbers")} aria-busy={!summary}>
+        {summary ? (
+          <>
+            <div className="lp-stat"><strong><CountUp value={summary.variables} /></strong><span>{t("measurements of the Earth")}</span></div>
+            <div className="lp-stat"><strong><CountUp value={summary.products.length} /></strong><span>{t("NASA data products")}</span></div>
+            <div className="lp-stat"><strong>{summary.first_month?.slice(0, 4) ?? "—"}</strong><span>{t("first year on record")}</span></div>
+            <div className="lp-stat"><strong><CountUp value={summary.cases} /></strong><span>{t("detective cases")}</span></div>
+          </>
+        ) : (
+          [0, 1, 2, 3].map((k) => <div key={k} className="lp-stat"><div className="lp-skel lp-skel-stat" /><div className="lp-skel lp-skel-line" /></div>)
+        )}
       </section>
 
       <Section id="lp-what" eyebrow={t("What you can do")} title={t("One question, many ways to answer it")}>

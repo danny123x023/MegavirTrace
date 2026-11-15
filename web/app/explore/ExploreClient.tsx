@@ -31,6 +31,8 @@ export default function ExploreClient() {
   const [variable, setVariable] = useState(sp.get("v") ?? "");
   const [chosen, setChosen] = useState<Chosen | null>(regionFromParams(new URLSearchParams(sp.toString())));
   const [mode, setMode] = useState<ModeState>({ mode: sp.get("mode") ?? "annual", season: sp.get("season") ?? "JJA", start: sp.get("start") ?? "", end: sp.get("end") ?? "" });
+  // a link without a mode opens the variable's own default view (monthly for short or gappy records)
+  const [modeReady, setModeReady] = useState(sp.get("mode") !== null);
   const [result, setResult] = useState<TrendResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,6 +54,12 @@ export default function ExploreClient() {
 
   const varInfo = useMemo(() => catalog?.variables.find((v) => v.id === variable) ?? null, [catalog, variable]);
 
+  useEffect(() => {
+    if (modeReady || !varInfo) return;
+    setMode((m) => ({ ...m, mode: varInfo.default_mode ?? "annual" }));
+    setModeReady(true);
+  }, [varInfo, modeReady]);
+
   // default place: the whole Earth for global data, the data area for test data
   useEffect(() => {
     if (chosen || !varInfo?.data) return;
@@ -60,7 +68,7 @@ export default function ExploreClient() {
   }, [varInfo, chosen]);
 
   const run = useCallback(async () => {
-    if (!variable || !chosen || !varInfo?.data) return;
+    if (!variable || !chosen || !varInfo?.data || !modeReady) return;
     ctl.current?.abort();
     const c = new AbortController();
     ctl.current = c;
@@ -92,7 +100,7 @@ export default function ExploreClient() {
     if (mode.end) q.set("end", mode.end);
     // keep the URL shareable without a Next.js navigation (which would need the network)
     window.history.replaceState(null, "", `/explore?${q.toString()}`);
-  }, [variable, chosen, mode, varInfo, lang]);
+  }, [variable, chosen, mode, varInfo, lang, modeReady]);
 
   useEffect(() => { run(); }, [run]);
 

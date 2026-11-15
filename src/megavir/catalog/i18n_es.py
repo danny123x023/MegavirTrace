@@ -159,6 +159,70 @@ ES: dict[str, dict] = {
         "caveat": "Es una asimilación de modelo de las mediciones de OCO-2; sube casi en todas partes, así que las diferencias locales son pequeñas.",
         "rising_words": ("a más CO₂", "a menos CO₂"),
     },
+    # ---- added 2026-11-15 ------------------------------------------------------------------
+    "rainfall_long": {
+        "name": "Precipitación de registro largo",
+        "definition": "Toda la lluvia y la nieve (como agua) que cae en un mes, combinando satélites y pluviómetros, desde 1983.",
+        "why_it_can_trend": "Una atmósfera más cálida contiene más agua, y las tormentas y los monzones pueden desplazarse. Este registro es unos 17 años más largo que el principal, así que los cambios lentos se detectan mejor.",
+        "caveat": "Es más grueso (0,5°) que el registro principal y se actualiza con unos meses de retraso; la lluvia varía mucho de un año a otro.",
+        "rising_words": ("a más lluvia", "a menos lluvia"),
+    },
+    "water_vapour": {
+        "name": "Vapor de agua en el aire",
+        "definition": "Todo el vapor de agua de la columna de aire sobre un lugar, en milímetros de agua si cayera todo como lluvia.",
+        "why_it_can_trend": "El aire más cálido contiene alrededor de un 7 % más de vapor de agua por cada °C, así que un clima más cálido humedece el aire, y ese vapor extra alimenta aguaceros más fuertes.",
+        "caveat": "Es una estimación de reanálisis guiada por mediciones de satélites y globos sonda.",
+        "rising_words": ("a más vapor de agua", "a menos vapor de agua"),
+    },
+    "snow_water": {
+        "name": "Agua en la nieve (manto de nieve)",
+        "definition": "Cuánta agua guarda la nieve del suelo, en milímetros de agua derretida.",
+        "why_it_can_trend": "Los inviernos más cálidos derriten antes la nieve y convierten la nieve en lluvia; más precipitación invernal puede formar un manto más grueso.",
+        "caveat": "Es una estimación de un modelo de superficie con el tiempo observado; los mantos de hielo y los glaciares no se modelan como nieve, y un lugar sin nieve no tiene tendencia que medir.",
+        "rising_words": ("a más agua en la nieve", "a menos agua en la nieve"),
+    },
+    "cloud_cover": {
+        "name": "Nubosidad",
+        "definition": "La parte del cielo cubierta por nubes en un mes, de día y de noche.",
+        "why_it_can_trend": "El calentamiento cambia dónde se forman las nubes; el aire más limpio o más sucio y el desplazamiento de las tormentas también las cambian.",
+        "caveat": "Es una estimación de reanálisis: las nubes son de lo más difícil para los modelos meteorológicos, así que las tendencias pequeñas deben tomarse con cautela.",
+        "rising_words": ("a más nubes", "a menos nubes"),
+    },
+    "sunshine": {
+        "name": "Luz solar que llega al suelo",
+        "definition": "Cuánta luz del sol llega al suelo, promediando día y noche, en vatios por metro cuadrado.",
+        "why_it_can_trend": "Menos nubes o un aire más limpio dejan pasar más luz (abrillantamiento); más bruma o más nubes la reducen (oscurecimiento).",
+        "caveat": "Es una estimación de reanálisis que depende de sus nubes y aerosoles, no una medición directa en el suelo.",
+        "rising_words": ("a más sol", "a menos sol"),
+    },
+    "wind_speed": {
+        "name": "Velocidad del viento cerca del suelo",
+        "definition": "La velocidad media del viento cerca del suelo en un mes.",
+        "why_it_can_trend": "Los cambios en las trayectorias de las tormentas, el contraste entre tierra y mar y la diferencia de temperatura entre los polos y los trópicos pueden reforzar o debilitar los vientos.",
+        "caveat": "Es una estimación de reanálisis; los cambios a lo largo de los años en las observaciones que usa pueden dejar pequeñas tendencias artificiales.",
+        "rising_words": ("a más viento", "a menos viento"),
+    },
+    "ozone": {
+        "name": "Capa de ozono (ozono total)",
+        "definition": "Cuánto ozono hay en toda la columna de aire sobre un lugar, en unidades Dobson; casi todo está en lo alto, en la capa de ozono que frena los rayos UV dañinos.",
+        "why_it_can_trend": "Los químicos que destruyen el ozono (CFC) adelgazaron la capa, sobre todo sobre la Antártida en primavera; desde su prohibición en 1987 se recupera lentamente.",
+        "caveat": "Es un reanálisis que asimila mediciones de ozono por satélite. El agujero de ozono antártico aparece de septiembre a noviembre, así que conviene mirar esa estación allí.",
+        "rising_words": ("a una capa de ozono más gruesa", "a una capa de ozono más delgada"),
+    },
+    "sea_salinity": {
+        "name": "Salinidad del mar en superficie",
+        "definition": "Lo salada que está la capa superior del océano, en unidades prácticas de salinidad (unos gramos de sal por kilo de agua de mar).",
+        "why_it_can_trend": "La evaporación sala el agua de mar; la lluvia, los ríos y el hielo que se derrite la endulzan. Un ciclo del agua más intenso hace más saladas las zonas saladas y más dulces las dulces.",
+        "caveat": "Se mide desde el espacio solo desde 2015, así que los registros son cortos; es menos fiable cerca de las costas, del hielo marino y en aguas frías.",
+        "rising_words": ("a un mar más salado", "a un mar más dulce"),
+    },
+    "chlorophyll": {
+        "name": "Clorofila del océano (fitoplancton)",
+        "definition": "El pigmento verde de las diminutas plantas (fitoplancton) que flotan cerca de la superficie del océano, en miligramos por metro cúbico: una medida de la vida marina.",
+        "why_it_can_trend": "El agua superficial más cálida se mezcla menos y sube menos nutrientes, lo que puede significar menos fitoplancton; los ríos, el afloramiento y el hielo que se derrite pueden alimentar más.",
+        "caveat": "Las nubes, los reflejos del sol y la noche polar dejan huecos; los valores varían cien veces entre el océano abierto y las costas, y el satélite Aqua está envejeciendo.",
+        "rising_words": ("a más fitoplancton", "a menos fitoplancton"),
+    },
 }
 
 THEMES_ES = {
@@ -166,6 +230,7 @@ THEMES_ES = {
     "Water cycle": "Ciclo del agua",
     "Soil and land water": "Suelo y agua en tierra",
     "Air quality": "Calidad del aire",
+    "Sky and air": "Cielo y aire",
     "Fire": "Incendios",
     "Vegetation": "Vegetación",
     "Ocean": "Océano",
@@ -189,6 +254,13 @@ _ARTICLE = {
     "Aerosoles": ("Los", True),
     "Balance": ("El", False),
     "Concentración": ("La", False),
+    "Vapor": ("El", False),
+    "Nubosidad": ("La", False),
+    "Luz": ("La", False),
+    "Velocidad": ("La", False),
+    "Capa": ("La", False),
+    "Salinidad": ("La", False),
+    "Clorofila": ("La", False),
 }
 for _v in ES.values():
     _first = _v["name"].split()[0]

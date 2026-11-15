@@ -273,6 +273,9 @@ def _granules(p: Product, start: str, end: str, limit: int | None) -> list:
     granules = dl.cmr_granules(p.concept_id, start, end)
     if p.granule_filter:
         granules = [g for g in granules if p.granule_filter(g)]
+    # one file per name: some archives list the same file under two granule records (OB.DAAC)
+    seen: set[str] = set()
+    granules = [g for g in granules if not (g.name in seen or seen.add(g.name))]
     if limit:
         granules = granules[-limit:]
     if not granules:

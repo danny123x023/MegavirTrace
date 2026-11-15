@@ -760,6 +760,7 @@ body.panel-covering { overflow: hidden; }
 .lp-skel-title { height: 18px; width: 70%; margin: 14px 0 12px; }
 .lp-skel-chart { height: 170px; margin-bottom: 14px; border-radius: 12px; }
 .lp-skel-line { height: 12px; width: 88%; }
+.lp-skel-stat { height: 40px; width: 45%; margin-bottom: 8px; }
 
 /* one stripe per year */
 .lp-stripes { margin-top: 12px !important; margin-bottom: 0 !important; }

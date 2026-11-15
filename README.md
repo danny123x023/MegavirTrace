@@ -73,11 +73,20 @@ A non-significant verdict says how many more years of data a trend of that size 
 | Surface temperature change | GISTEMP v4 | **Real, global, 1880 to present.** Matches NASA's official global series: r = 0.9997, mean difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year (2024). |
 | Water stored on land | GSFC GRACE/GRACE-FO mascons | **Real, global, 2002 to present** (analysed month by month because of mission gaps) |
 | Fire carbon emissions | MiCASA v1 | **Real, global, 2001–2024** |
-| The other 19 variables | OMI, GLDAS, GPM IMERG, MODIS (×3), NASA-SSH, MERRA-2 (×3), AIRS, CERES, NSIDC, OCO-2 | Code ready; needs a free NASA Earthdata Login (see below) |
+| The other 18 variables | OMI, GLDAS, GPM IMERG, MODIS (×3), NASA-SSH, MERRA-2 (×3), AIRS, CERES, NSIDC, OCO-2 | **Real, global** (imported with a NASA Earthdata Login, see below) |
+| Added 2026-11-15: sea surface salinity · ocean chlorophyll (phytoplankton) · cloud cover · sunshine at the ground · snow water · wind speed · ozone layer · water vapour · rainfall since 1983 | SMAP RSS V6 (PO.DAAC) · MODIS-Aqua L3m R2022.0 (OB.DAAC) · MERRA-2 M2TMNXRAD, M2TMNXLND, M2TMNXFLX, M2TMNXSLV · GPCP V3.3 | **Real, global** (ocean-only for salinity and chlorophyll; salinity since 2015, chlorophyll since 2002-07, GPCP since 1983, MERRA-2 since 1980) |
 
 The **test box** is about 5° × 5° on the US Gulf Coast (95–90°W, 27.5–32.5°N): Louisiana, east Texas, Houston
 and the Gulf of Mexico, so both land-only and sea-only variables have cells there. Test data are always
 labelled as such and never presented as real results.
+
+**Sources checked on 2026-11-15** (GRACE-FO, PO.DAAC, NSIDC, LP DAAC, GES DISC, NASA POWER, Worldview, Giovanni,
+the Earthdata developer portal and catalog, Copernicus Data Space, JAXA G-Portal, ISRO Bhoonidhi and MOSDAC, Open
+Canada, ASI COSMO-SkyMed, KARI, INPE TerraBrasilis): the nine variables above came out of that survey. Copernicus,
+G-Portal, Bhoonidhi, MOSDAC, ASI and KARI need accounts of their own (or hold licensed imagery); NASA POWER, JAXA's
+open Earth API (GSMaP, AMSR2), the JPL GRACE mascons and Canada's CANGRD grid repeat variables already here; Worldview,
+Giovanni and the developer portal are tools (Giovanni is used to check our regional averages); TerraBrasilis'
+PRODES deforestation (yearly polygons for Brazil) would first need turning into a grid.
 
 ## Quick start (local)
 
@@ -224,7 +233,7 @@ ingest jobs (src/megavir/ingest) ──> PostgreSQL: versioned grids as compress
 
 - `engine/`: deterministic statistics (`stats.py`), aggregation, cell maps with FDR, the comparison, and the
   verdict templates (English and Spanish).
-- `catalog/`: the 16 variables and 11 datasets. Every DOI was resolved against NASA CMR or Crossref.
+- `catalog/`: the 31 variables and 23 datasets. Every DOI was resolved against NASA CMR or Crossref.
 - `store/`: tiles are byte-shuffled float32 compressed with zstd. A region reads only the tiles it touches,
   and each import is swapped in within one transaction.
 - `places/`: region masks with fractional cell weights, presets, and loaders.
@@ -237,7 +246,7 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 
 | ID | Requirement | Priority | Status |
 | --- | --- | --- | --- |
-| FR1 | Variable catalog | Must | Done: 22 variables, 7 themes, 17 products |
+| FR1 | Variable catalog | Must | Done: 31 variables, 8 themes, 23 products |
 | FR3 | Region selection | Must | Done: 39,089 places, 138 presets, drawn or typed box, real outlines |
 | FR4 | Regional time series | Must | Done: area-weighted, coverage per month, 4 modes, table view |
 | FR5 | Trend statistics | Must | Done, Monte Carlo verified |

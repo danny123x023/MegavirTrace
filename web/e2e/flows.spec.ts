@@ -83,6 +83,20 @@ test("the site has a favicon (tab icon) and a home-screen icon", async ({ page, 
   }
 });
 
+test("new measurements (2026-11-15): listed by theme; a short record opens on monthly values", async ({ page }) => {
+  await page.goto("/explore");
+  await expect(page.locator(".verdict h2")).toBeVisible();
+  const what = page.getByLabel("What");
+  await expect(what.locator('optgroup[label="Sky and air"] option')).toHaveText(["Cloud cover", "Sunshine at the ground", "Wind speed near the ground", "Ozone layer (total ozone)"]);
+  for (const name of ["Sea surface salinity", "Ocean chlorophyll (phytoplankton)", "Long-record rainfall", "Water vapour in the air", "Snow water (snowpack)"]) {
+    await expect(what.locator("option", { hasText: name })).toHaveCount(1);
+  }
+  // sea salinity is measured from space only since 2015: the monthly view opens first, so it can be tested
+  await page.goto("/explore?v=sea_salinity&place=preset%3Abay_of_bengal&label=Bay+of+Bengal");
+  await expect(page.locator(".verdict h2")).toContainText("Sea surface salinity in the Bay of Bengal");
+  await expect(page.locator(".verdict h2")).not.toContainText("cannot be tested");
+});
+
 test("explore: search a place and switch modes", async ({ page }) => {
   await page.goto("/explore");
   await expect(page.locator(".verdict h2")).toBeVisible();

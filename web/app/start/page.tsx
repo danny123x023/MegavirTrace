@@ -10,18 +10,18 @@ import { useI18n, varText } from "@/lib/i18n";
 const PLACE_TYPES: Record<string, { label: string; vars: string[] }> = {
   city: { label: "A city", vars: ["no2", "nightly_low", "daily_high", "downpour", "air_temp"] },
   farm: { label: "Farmland", vars: ["soil_moisture", "rainfall", "ndvi", "evapotranspiration", "daily_high"] },
-  coast: { label: "A coast or island", vars: ["sea_level", "sea_surface_temp", "downpour", "rainfall"] },
-  mountain: { label: "Mountains or ice", vars: ["air_temp", "land_water", "ground_temp", "temp_change"] },
+  coast: { label: "A coast or island", vars: ["sea_level", "sea_surface_temp", "chlorophyll", "downpour", "rainfall"] },
+  mountain: { label: "Mountains or ice", vars: ["air_temp", "snow_water", "land_water", "ground_temp", "temp_change"] },
   dry: { label: "A dry place or desert", vars: ["rainfall", "topsoil_moisture", "ground_temp", "land_water", "ndvi"] },
   forest: { label: "A forest", vars: ["ndvi", "fire_carbon", "rainfall", "daily_high"] },
-  ocean: { label: "Open ocean", vars: ["sea_surface_temp", "sea_level"] },
-  anywhere: { label: "Anywhere", vars: ["temp_change", "air_temp", "rainfall"] },
+  ocean: { label: "Open ocean", vars: ["sea_surface_temp", "sea_level", "sea_salinity", "chlorophyll", "wind_speed"] },
+  anywhere: { label: "Anywhere", vars: ["temp_change", "air_temp", "rainfall_long", "water_vapour"] },
 };
 
 const CURIOSITY: Record<string, { label: string; themes: string[] }> = {
   heat: { label: "Heat", themes: ["Heat"] },
   water: { label: "Rain and water", themes: ["Water cycle", "Soil and land water"] },
-  air: { label: "Air we breathe", themes: ["Air quality"] },
+  air: { label: "Air we breathe", themes: ["Air quality", "Sky and air"] },
   plants: { label: "Plants and fire", themes: ["Vegetation", "Fire"] },
   sea: { label: "The sea", themes: ["Ocean"] },
 };

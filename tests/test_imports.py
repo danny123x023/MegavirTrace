@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from starlette.requests import Request
 
+from megavir.ingest.products import PRODUCTS
 from tests.conftest import ORIGIN
 
 BLOCKED = [sys.executable, "-c", "import sys; print('real command blocked in tests'); sys.exit(3)"]
@@ -379,7 +380,7 @@ def test_dashboard_api_reading_is_open_acting_is_local(
 
     monkeypatch.setattr(nasa, "check_product", fake)
     cat = local_client.post("/admin/catalog/refresh", headers=ORIGIN).json()
-    assert cat["checked_at"] and cat["counts"]["all"] == 17
+    assert cat["checked_at"] and cat["counts"]["all"] == len(PRODUCTS)
     assert {r["status"] for r in cat["rows"]} <= {"stand_in", "not_imported"}  # the test store is synthetic
     q = local_client.post("/admin/imports", json={"products": ["imerg"]}, headers=ORIGIN).json()
     assert q["queued"][0]["product"] == "imerg"

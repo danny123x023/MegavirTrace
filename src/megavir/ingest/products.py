@@ -270,8 +270,12 @@ _reg(
         access="opendap",
         cadence="monthly",
         target_res=0.5,
-        fields=["T2M"],
-        outputs={"air_temp": lambda f, m: k_to_c(f["T2M"])},
+        fields=["T2M", "TO3", "TQV"],
+        outputs={
+            "air_temp": lambda f, m: k_to_c(f["T2M"]),
+            "ozone": lambda f, m: f["TO3"],  # Dobson units
+            "water_vapour": lambda f, m: f["TQV"],  # kg/m2 = mm of water if it all fell as rain
+        },
         native_lats=regular(-90.0, 0.5, 361),
         native_lons=regular(-180.0, 0.625, 576),
         fill=(1e15,),
@@ -508,6 +512,143 @@ _reg(
         reader=_read_snow,
         domain_mask={"snow_cover": "land"},
         notes="HDF4 CMG grid (no OPeNDAP): whole files are downloaded and read with pyhdf.",
+    )
+)
+
+
+# --------------------------------------------------------------------------------------
+# Added 2026-11-15 after a survey of NASA and partner archives: three more MERRA-2 collections,
+# GPCP (rainfall since 1983), SMAP sea surface salinity and MODIS-Aqua ocean chlorophyll.
+# Field names, grids, fill values and units were checked against a recent file of each.
+# --------------------------------------------------------------------------------------
+
+MERRA2_LATS, MERRA2_LONS = regular(-90.0, 0.5, 361), regular(-180.0, 0.625, 576)
+
+_reg(
+    Product(
+        id="merra2_rad",
+        concept_id="C1276812858-GES_DISC",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["CLDTOT", "SWGDN"],
+        outputs={
+            "cloud_cover": lambda f, m: f["CLDTOT"] * 100.0,  # fraction -> %
+            "sunshine": lambda f, m: f["SWGDN"],  # sunlight reaching the ground, W/m2
+        },
+        native_lats=MERRA2_LATS,
+        native_lons=MERRA2_LONS,
+        fill=(1e15,),
+        record_start="1980-01",
+    )
+)
+
+_reg(
+    Product(
+        id="merra2_lnd",
+        concept_id="C1276812856-GES_DISC",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["SNOMAS"],
+        outputs={"snow_water": lambda f, m: f["SNOMAS"]},  # kg/m2 = mm of water in the snowpack
+        domain_mask={"snow_water": "land"},
+        native_lats=MERRA2_LATS,
+        native_lons=MERRA2_LONS,
+        fill=(1e15,),
+        record_start="1980-01",
+    )
+)
+
+_reg(
+    Product(
+        id="merra2_flx",
+        concept_id="C1276812868-GES_DISC",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["SPEED"],
+        outputs={"wind_speed": lambda f, m: f["SPEED"]},  # m/s near the surface
+        native_lats=MERRA2_LATS,
+        native_lons=MERRA2_LONS,
+        fill=(1e15,),
+        valid_range=(0, 100),
+        record_start="1980-01",
+    )
+)
+
+_reg(
+    Product(
+        id="gpcp",
+        concept_id="C3405935516-GES_DISC",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.5,
+        fields=["sat_gauge_precip"],
+        outputs={
+            "rainfall_long": lambda f, m: f["sat_gauge_precip"] * days_in_month(m)
+        },  # mm/day -> mm/month
+        native_lats=regular(89.75, -0.5, 360),
+        native_lons=regular(-179.75, 0.5, 720),
+        fill=(-99999.0,),
+        valid_range=(0, 100),
+        record_start="1983-01",
+        notes="0.5° grid stored north -> south; mm/day.",
+    )
+)
+
+_reg(
+    Product(
+        id="smap_sss",
+        concept_id="C2832226365-POCLOUD",
+        access="opendap",
+        cadence="monthly",
+        target_res=0.25,
+        fields=["sss_smap"],
+        outputs={"sea_salinity": lambda f, m: f["sss_smap"]},  # practical salinity (psu)
+        domain_mask={"sea_salinity": "ocean"},
+        native_lats=regular(-89.875, 0.25, 720),
+        native_lons=regular(0.125, 0.25, 1440),
+        fill=(-9999.0,),
+        valid_range=(0, 45),
+        record_start="2015-04",
+        notes="RSS V6, smoothed to about 70 km; 0..360 longitudes; no time dimension in the field.",
+    )
+)
+
+
+def _chl_monthly(g) -> bool:
+    # monthly 9 km files only; recent months are listed under two granule records for one file,
+    # and the pipeline keeps one file per name
+    return ".L3m.MO.CHL.chlor_a.9km.nc" in g.name and not g.name.endswith(".NRT.nc")
+
+
+def _read_chl(path: Path, begin: str):
+    """MODIS-Aqua L3 mapped chlorophyll, 9 km (2160 x 4320, north -> south), mg/m3."""
+    with h5py.File(path, "r") as f:
+        ds = f["chlor_a"]
+        raw = np.asarray(ds[:], float)
+        fill = float(np.asarray(ds.attrs.get("_FillValue", -32767.0)).ravel()[0])
+        lats, lons = np.asarray(f["lat"][:], float), np.asarray(f["lon"][:], float)
+    raw[(raw == fill) | (raw <= 0) | (raw > 100)] = np.nan
+    fld, la, lo = to_standard(raw, lats, lons)
+    return [(month_abs_from_iso(begin), {"chlor_a": fld}, la, lo)]
+
+
+_reg(
+    Product(
+        id="modis_chl",
+        concept_id="C3380709133-OB_CLOUD",
+        access="download",
+        cadence="monthly",
+        target_res=0.5,  # 0.25° for 286 months needed over 5 GB of memory while storing (killed on a 17 GB server)
+        fields=["chlor_a"],
+        outputs={"chlorophyll": lambda f, m: f["chlor_a"]},
+        domain_mask={"chlorophyll": "ocean"},
+        record_start="2002-07",
+        granule_filter=_chl_monthly,
+        reader=_read_chl,
+        notes="Whole monthly 9 km files (no OPeNDAP at OB.DAAC); read with h5py; averaged to 0.5°.",
     )
 )
 

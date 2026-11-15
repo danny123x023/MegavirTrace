@@ -651,6 +651,7 @@ export const THEME_ES: Record<string, string> = {
   "Water cycle": "Ciclo del agua",
   "Soil and land water": "Suelo y agua en tierra",
   "Air quality": "Calidad del aire",
+  "Sky and air": "Cielo y aire",
   Fire: "Incendios",
   Vegetation: "Vegetación",
   Ocean: "Océano",
