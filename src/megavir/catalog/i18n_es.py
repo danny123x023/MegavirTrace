@@ -159,7 +159,9 @@ ES: dict[str, dict] = {
         "name": "Dióxido de carbono (XCO₂)",
         "definition": "La cantidad media de dióxido de carbono en toda la columna de aire, en partes por millón.",
         "why_it_can_trend": "Quemar combustibles fósiles añade CO₂ en todas partes; las diferencias regionales vienen de las plantas, los incendios y los vientos.",
-        "caveat": "Es una asimilación de modelo de las mediciones de OCO-2; sube casi en todas partes, así que las diferencias locales son pequeñas.",
+        "caveat": "Es una asimilación de modelo de las mediciones de OCO-2. El producto termina en febrero de 2022, así "
+        "que el registro (desde enero de 2015) tiene 7 años completos: demasiado corto para una prueba de tendencia "
+        "aquí, que necesita 8. El CO₂ sube casi en todas partes, así que las diferencias locales son pequeñas.",
         "rising_words": ("a más CO₂", "a menos CO₂"),
     },
     # ---- added 2026-11-15 ------------------------------------------------------------------

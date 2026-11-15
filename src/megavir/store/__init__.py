@@ -312,6 +312,31 @@ def write_mask(conn: psycopg.Connection, name: str, spec: GridSpec, data: np.nda
 _mask_cache: dict[tuple, np.ndarray] = {}
 
 
+def read_land_mask(conn: psycopg.Connection, res: float) -> tuple[GridSpec, np.ndarray] | None:
+    """The land-fraction mask at ``res``.  If that resolution was never stored, one that was is
+    resampled (repeated onto a finer grid, or averaged onto a coarser one), so a land- or sea-only
+    variable is never silently weighted as if the whole region were its domain."""
+    got = read_mask(conn, "land", res)
+    if got:
+        return got
+    stored = [float(r["res_deg"]) for r in conn.execute("SELECT res_deg FROM grid_mask WHERE name = 'land'")]
+    g = GridSpec.global_grid(res)
+    for src in sorted(stored):  # the nearest coarser mask, repeated
+        k = src / res
+        if k >= 1 and abs(k - round(k)) < 1e-6:
+            k = int(round(k))
+            lf = read_mask(conn, "land", src)[1]
+            return g, np.repeat(np.repeat(lf, k, axis=0), k, axis=1)[: g.ny, : g.nx]
+    for src in sorted(stored, reverse=True):  # else the nearest finer mask, averaged
+        k = res / src
+        if k > 1 and abs(k - round(k)) < 1e-6:
+            k = int(round(k))
+            lf = read_mask(conn, "land", src)[1]
+            ny, nx = lf.shape
+            return g, lf[: ny // k * k, : nx // k * k].reshape(ny // k, k, nx // k, k).mean(axis=(1, 3))
+    return None
+
+
 def read_mask(conn: psycopg.Connection, name: str, res: float) -> tuple[GridSpec, np.ndarray] | None:
     """Global mask at a resolution (windows of the global grid use an offset into it)."""
     g = GridSpec.global_grid(res)

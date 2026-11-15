@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 
 from megavir.catalog import DATASETS, VARIABLES
-from megavir.store import GridSpec, read_mask, write_version
+from megavir.store import GridSpec, read_land_mask, write_version
 
 from . import download as dl
 from .products import PRODUCTS, Product, gunzip, month_abs_from_iso, multi_time_fields, standard_fields
@@ -412,7 +412,7 @@ def _month_from_name(name: str) -> int:
 
 
 def _land_mask_for(conn, spec: GridSpec) -> np.ndarray | None:
-    got = read_mask(conn, "land", spec.res)
+    got = read_land_mask(conn, spec.res)
     if not got:
         return None
     g, lf = got

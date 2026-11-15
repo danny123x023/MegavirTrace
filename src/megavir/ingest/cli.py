@@ -147,7 +147,8 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("init-db")
     pp = sub.add_parser("places")
     pp.add_argument("--download", action="store_true", help="fetch the public source files first")
-    sub.add_parser("masks")
+    mk = sub.add_parser("masks", help="land-fraction masks for every stored grid (or only --res)")
+    mk.add_argument("--res", type=float, nargs="*", help="only these resolutions in degrees, e.g. 0.25")
     sy = sub.add_parser("synthetic")
     sy.add_argument("--years", type=int, default=24)
     for mode in ("test", "full"):
@@ -189,7 +190,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "masks":
         from megavir.places.load import load_land_masks
 
-        print("land share of Earth's area:", load_land_masks(conn, _raw()))
+        print("land share of Earth's area:", load_land_masks(conn, _raw(), tuple(args.res) if args.res else None))
     elif args.cmd == "synthetic":
         from .synthetic import build_synthetic
 

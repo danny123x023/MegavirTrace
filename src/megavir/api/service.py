@@ -33,7 +33,7 @@ from megavir.engine.compare import compare_series
 from megavir.engine.stats import NotEnoughData, analyse_trend
 from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
 from megavir.places.geometry import apply_domain, cells_for
-from megavir.store import GridSpec, Version, active_versions, read_cells, read_mask
+from megavir.store import GridSpec, Version, active_versions, read_cells, read_land_mask
 
 ENGINE_VERSION = "2026.11-8"
 MAX_MAP_CELLS = 40_000  # mapped cell by cell up to this many
@@ -163,7 +163,7 @@ def region_cells(conn, var, v: Version, region: Region):
         raise AnalysisError(_outside_message(var, v))
     land = None
     if var.domain != "all":
-        got = read_mask(conn, "land", v.spec.res)
+        got = read_land_mask(conn, v.spec.res)
         if got:
             g, lf = got
             land = (lf, v.spec.offset_in(g))

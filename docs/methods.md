@@ -216,7 +216,8 @@ understate long-memory variability (for example deep soil moisture or ocean heat
 results should be read with care. Its blind spot is a mix of fast and slow noise: month-to-month memory 0.5
 plus a slow yearly swing with persistence 0.7 gives 7.7% false alarms in 25-year records, and very persistent
 yearly series (r₁ = 0.9) give 5.8–6.8%. A record also needs at least 8 years with enough months: OCO-2 GEOS
-XCO₂ (January 2015 to February 2022) holds only 7, so it is shown but not tested.
+XCO₂ (January 2015 to February 2022, the end of the product) holds only 7, so the app says it cannot be tested
+instead of giving a verdict.
 
 ## References
 

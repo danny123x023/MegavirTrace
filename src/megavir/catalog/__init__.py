@@ -839,7 +839,9 @@ VARIABLES: dict[str, Variable] = {
             source_badge="OCO-2 · GEOS",
             definition="The average amount of carbon dioxide in the whole column of air, in parts per million.",
             why_it_can_trend="Burning fossil fuels adds CO₂ everywhere; regional differences come from plants, fires and winds.",
-            caveat="A model assimilation of OCO-2 measurements; it rises almost everywhere, so local differences are small.",
+            caveat="A model assimilation of OCO-2 measurements. The product ends in February 2022, so the record (from "
+            "January 2015) holds 7 full years: too short for a trend test here, which needs 8. CO₂ rises almost "
+            "everywhere, so local differences are small.",
             rising_words=("seeing more CO₂", "seeing less CO₂"),
             decimals=1,
         ),

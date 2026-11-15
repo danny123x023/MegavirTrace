@@ -73,7 +73,8 @@ A non-significant verdict says how many more years of data a trend of that size 
 | Surface temperature change | GISTEMP v4 | **Real, global, 1880 to present.** Matches NASA's official global series: r = 0.9997, mean difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year (2024). |
 | Water stored on land | GSFC GRACE/GRACE-FO mascons | **Real, global, 2002 to present** (analysed month by month because of mission gaps) |
 | Fire carbon emissions | MiCASA v1 | **Real, global, 2001–2024** |
-| The other 18 variables | OMI, GLDAS, GPM IMERG, MODIS (×3), NASA-SSH, MERRA-2 (×3), AIRS, CERES, NSIDC, OCO-2 | **Real, global** (imported with a NASA Earthdata Login, see below) |
+| Carbon dioxide (XCO₂) | OCO-2 GEOS L3 V10r | **Real, global, January 2015 to February 2022** (the product ends there): 7 full years, too short for the trend test, which needs 8 |
+| The other 17 variables | OMI, GLDAS, GPM IMERG, MODIS (×3), NASA-SSH, MERRA-2 (×3), AIRS, CERES, NSIDC | **Real, global** (imported with a NASA Earthdata Login, see below) |
 | Added 2026-11-15: sea surface salinity · ocean chlorophyll (phytoplankton) · cloud cover · sunshine at the ground · snow water · wind speed · ozone layer · water vapour · rainfall since 1983 | SMAP RSS V6 (PO.DAAC) · MODIS-Aqua L3m R2022.0 (OB.DAAC) · MERRA-2 M2TMNXRAD, M2TMNXLND, M2TMNXFLX, M2TMNXSLV · GPCP V3.3 | **Real, global** (ocean-only for salinity and chlorophyll; salinity since 2015, chlorophyll since 2002-07, GPCP since 1983, MERRA-2 since 1980) |
 
 The **test box** is about 5° × 5° on the US Gulf Coast (95–90°W, 27.5–32.5°N): Louisiana, east Texas, Houston
