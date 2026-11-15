@@ -438,6 +438,7 @@ def _months_from_bounds(bounds) -> list[int]:
     midpoint put two solutions in November and none in October.  When two steps still claim the
     same month, the one with fewer days there moves to its next month if that is free.
     """
+
     def days_by_month(b0, b1) -> dict[int, int]:
         d0 = np.datetime64(b0, "D").astype(object)
         d1 = np.datetime64(b1, "D").astype(object)
@@ -454,7 +455,11 @@ def _months_from_bounds(bounds) -> list[int]:
     for k in range(1, len(months)):
         if months[k] == months[k - 1]:
             a, b = counts[k - 1], counts[k]
-            if a.get(months[k], 0) < b.get(months[k], 0) and (months[k] - 1) in a and (k < 2 or months[k - 2] != months[k] - 1):
+            if (
+                a.get(months[k], 0) < b.get(months[k], 0)
+                and (months[k] - 1) in a
+                and (k < 2 or months[k - 2] != months[k] - 1)
+            ):
                 months[k - 1] = months[k] - 1
             elif (months[k] + 1) in b and (k + 1 >= len(months) or months[k + 1] != months[k] + 1):
                 months[k] = months[k] + 1
@@ -504,14 +509,20 @@ def drop_sea_ice(conn, cube: np.ndarray, spec: GridSpec, m0: int, floor: float) 
     ice = read_full(conn, v)  # (months, ny, nx) on the sea-ice grid, percent
     n, ny, nx = ice.shape
     coarse_spec = GridSpec(
-        spec.res, v.spec.lat0 + (k - 1) * v.spec.res / 2, v.spec.lon0 + (k - 1) * v.spec.res / 2, ny // k, nx // k
+        spec.res,
+        v.spec.lat0 + (k - 1) * v.spec.res / 2,
+        v.spec.lon0 + (k - 1) * v.spec.res / 2,
+        ny // k,
+        nx // k,
     )
     oi, oj = spec.offset_in(coarse_spec)
     if oi < 0 or oj < 0 or oi + spec.ny > coarse_spec.ny or oj + spec.nx > coarse_spec.nx:
         raise ValueError("the sea-ice grid does not cover this field's grid")
     with np.errstate(invalid="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        coarse = np.nanmax(ice[:, : ny // k * k, : nx // k * k].reshape(n, ny // k, k, nx // k, k), axis=(2, 4))
+        coarse = np.nanmax(
+            ice[:, : ny // k * k, : nx // k * k].reshape(n, ny // k, k, nx // k, k), axis=(2, 4)
+        )
     del ice
     coarse = coarse[:, oi : oi + spec.ny, oj : oj + spec.nx]
     frozen = np.nan_to_num(coarse, nan=0.0) >= SEA_ICE_EDGE
