@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const PAGES = ["/", "/compare", "/related", "/start", "/cases", "/cases/europe-heatwave-2003", "/ask", "/methods", "/imports"];
+const PAGES = ["/", "/compare", "/related", "/start", "/cases", "/cases/europe-heatwave-2003", "/ask", "/methods", "/imports", "/admin"];
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} theme`, () => {
@@ -169,6 +169,7 @@ test("data import dashboard: NASA sources, history and stored data (read-only)",
   await page.getByLabel("Administrator token").fill("not-the-token");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("That token is not right.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Manage the account and check every source in the Admin panel/ })).toHaveAttribute("href", "/admin#earthdata");
 });
 
 
@@ -284,4 +285,42 @@ test("cell map of the whole Earth: merged blocks, full detail when zoomed in", a
   for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(250); }
   await expect(note).toContainText("Full detail for the area in view", { timeout: 60000 });
   await expect(map).toContainText("the false-discovery control runs over the cells shown");
+});
+
+test.describe("admin panel", () => {
+  // a throwaway token (local test servers: screenshot-only-token; CI: MEGAVIR_E2E_ADMIN_TOKEN)
+  const TOKEN = process.env.MEGAVIR_E2E_ADMIN_TOKEN ?? "screenshot-only-token";
+  test.use({ serviceWorkers: "block" });
+
+  test("sign in with a session, choose the AI service, see the sessions, sign out", async ({ page }) => {
+    await page.goto("/admin");
+    await expect(page.getByRole("heading", { name: "Administrator sign-in" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "AI service" })).toHaveCount(0); // nothing to manage before signing in
+    await page.getByLabel("Administrator token").fill("not-the-token");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByText("That token is not right.")).toBeVisible();
+    await page.getByLabel("Administrator token").fill(TOKEN);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "AI service" })).toBeVisible();
+    // the browser keeps a session, never the token
+    const stored = await page.evaluate(() => [sessionStorage.getItem("mt-admin-session"), JSON.stringify({ ...localStorage, ...sessionStorage })]);
+    expect(stored[0]).toBeTruthy();
+    expect(stored[1]).not.toContain(TOKEN);
+    for (const name of ["Claude (Anthropic)", "Z.ai (GLM)"]) await expect(page.getByRole("heading", { name, level: 3 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "NASA Earthdata account" })).toBeVisible();
+    const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    // switching the AI off is immediate (the test servers keep their own settings file)
+    await page.getByRole("button", { name: /^Off/ }).click();
+    await expect(page.getByRole("button", { name: /^Off/ })).toHaveAttribute("aria-pressed", "true");
+    expect((await (await page.request.get("/api/ai/status")).json()).enabled).toBe(false);
+    // the session is listed as this browser; signing out ends it on the server
+    const sessions = page.locator("#sess-h").locator("xpath=ancestor::section");
+    await expect(sessions.getByRole("row", { name: /this browser/ })).toBeVisible();
+    const secret = stored[0] as string;
+    await sessions.getByRole("button", { name: "Sign out", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Administrator sign-in" })).toBeVisible();
+    const after = await page.request.get("/api/admin/overview", { headers: { "X-Admin-Session": secret } });
+    expect((await after.json()).role).toBeNull();
+  });
 });

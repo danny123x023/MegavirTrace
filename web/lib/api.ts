@@ -94,30 +94,53 @@ async function handle<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-// Import dashboard: actions from another computer need the administrator token.  It is kept for
-// this browser tab only (sessionStorage, never a cookie) and sent only to /admin requests.
-const ADMIN_KEY = "mt-admin-token";
+// Admin panel and Data import: the administrator token is traded once for a session
+// (POST /admin/sessions); only the session is kept in the browser and sent, to /admin requests
+// only, as the X-Admin-Session header.  "Keep me signed in" keeps it across visits (localStorage,
+// 30 days on the server); otherwise it lasts for this tab (sessionStorage, 12 hours).
+const SESSION_KEY = "mt-admin-session";
 
-export function adminToken(): string | null {
+export function adminSession(): string | null {
   try {
-    return sessionStorage.getItem(ADMIN_KEY);
+    return sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY);
   } catch {
     return null;
   }
 }
 
-export function setAdminToken(token: string | null): void {
+function setAdminSession(secret: string | null, remember = false): void {
   try {
-    if (token) sessionStorage.setItem(ADMIN_KEY, token);
-    else sessionStorage.removeItem(ADMIN_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem("mt-admin-token"); // left by earlier versions
+    if (secret) (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, secret);
   } catch {
     /* private mode */
   }
 }
 
 function adminHeaders(path: string): Record<string, string> {
-  const token = path.startsWith("/admin") ? adminToken() : null;
-  return token ? { "X-Admin-Token": token } : {};
+  const secret = path.startsWith("/admin") ? adminSession() : null;
+  return secret ? { "X-Admin-Session": secret } : {};
+}
+
+/** Sign in with the administrator token; throws ApiError (403 wrong token, 429 too many tries). */
+export async function adminSignIn(token: string, remember: boolean): Promise<void> {
+  const r = await apiSend<{ session: string }>("POST", "/admin/sessions", { token, remember });
+  setAdminSession(r.session, remember);
+}
+
+export async function adminSignOut(): Promise<void> {
+  try {
+    await apiSend("DELETE", "/admin/sessions/current");
+  } finally {
+    setAdminSession(null);
+  }
+}
+
+/** Forget a session the server no longer knows (ended elsewhere or expired). */
+export function forgetAdminSession(): void {
+  setAdminSession(null);
 }
 
 export async function apiGet<T>(path: string, params?: Record<string, string | number | undefined>, signal?: AbortSignal): Promise<T> {

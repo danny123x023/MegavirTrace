@@ -114,3 +114,13 @@ CREATE TABLE IF NOT EXISTS import_state (
     value      JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- administrator sign-in sessions (Admin panel, Data import)
+CREATE TABLE IF NOT EXISTS admin_session (
+    id_hash    TEXT PRIMARY KEY,                    -- sha256 of the secret the browser holds
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    remember   BOOLEAN NOT NULL DEFAULT false,      -- "keep me signed in": 30 days instead of 12 hours
+    user_agent TEXT NOT NULL DEFAULT ''
+);

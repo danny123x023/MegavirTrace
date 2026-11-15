@@ -153,7 +153,9 @@ street map off. The map then shows the built-in country outlines, as it also doe
 
 ### The AI scientist (optional, off by default)
 
-Set it up in `.env`, never in the browser:
+The easiest way is the **Admin panel** (`/admin`, below). Keys for Claude (Anthropic) and Z.ai can be
+saved side by side, and you choose which service answers and with which model. Optionally the other
+service takes over when the chosen one fails. Or set one service in `.env`, never in the browser:
 
 ```
 MEGAVIR_AI_PROVIDER=zai          # or openai, openai_compatible, anthropic
@@ -166,6 +168,25 @@ MEGAVIR_AI_DAILY_CAP=500
 Also set a spend limit in the provider's own console. For Anthropic, the server-side refusal fallback
 (`fallbacks: "default"`) is enabled. Daily answers, fallbacks, failures and token counts are kept in the
 `ai_usage` table: counts only, never visitors' text or IP addresses.
+
+### Admin panel
+
+`/admin` (linked from the footer and the Data import page) has three parts. Anyone can open it, but
+nothing can be changed until you sign in with the administrator token (`megavir-ingest admin-token`).
+
+- **AI service:** a key and model for Claude (Anthropic, official SDK, default `claude-opus-5-5`) and
+  for Z.ai (GLM), which service answers, and whether the other one takes over on failure. A new key is
+  checked with the service before it is saved: Claude by looking up the model, which uses no tokens,
+  and Z.ai with a one-token request. Keys are kept only on the server in an owner-only file
+  (`data/ai_settings.json`, or `MEGAVIR_AI_SETTINGS_FILE`), and the page sees only their last four
+  characters. Choices made here override `.env`, and every API process sees a change at once.
+- **NASA Earthdata account:** the login that data imports use (check, change, remove), moved here from
+  the Data import page, which now links to it.
+- **Administrator sessions:** signing in trades the token for a session, so the browser never keeps the
+  token. Only a hash of the session is stored. A session ends after 12 hours without use, or 30 days
+  with "keep me signed in". Every signed-in browser is listed and can be signed out, one by one or
+  all others at once. Wrong tokens are limited to 10 per visitor in 10 minutes. Scripts may still send
+  the token as `X-Admin-Token`.
 
 ## Tests
 

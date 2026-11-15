@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     ai_timeout_s: float = 45.0
     # Z.ai GLM 5.x "thinks" by default: minutes per answer. Off keeps answers within seconds.
     ai_thinking: bool = False
+    # Keys, active service and models chosen in the Admin panel (owner-only file; overrides the
+    # values above).  Default: data/ai_settings.json.
+    ai_settings_file: str = ""
 
     # API rate limits for the open data API (FR17) and analysis endpoints
     analysis_per_minute_per_ip: int = 60

@@ -26,6 +26,7 @@ from megavir.catalog import VARIABLES
 from megavir.config import settings
 from megavir.store import connect
 
+from . import config
 from .numbers import allowed_numbers, check_text
 
 log = logging.getLogger("megavir.ai")
@@ -34,7 +35,6 @@ BASE_URLS = {
     "zai": "https://api.z.ai/api/paas/v4",
     "openai": "https://api.openai.com/v1",
 }
-DEFAULT_MODELS = {"anthropic": "claude-opus-5-5"}
 MAX_TOOL_ROUNDS = 6
 
 _hourly: SlidingWindow | None = None
@@ -53,12 +53,13 @@ def _limiter() -> SlidingWindow:
 
 
 def _provider() -> str:
-    p = (settings().ai_provider or "none").lower()
-    return p if p in ("zai", "openai", "openai_compatible", "anthropic") and settings().ai_api_key else "none"
+    """The active service (Admin panel, else .env), or "none"."""
+    return config.active()
 
 
 def _model() -> str:
-    return settings().ai_model or DEFAULT_MODELS.get(_provider(), "")
+    p = _provider()
+    return config.provider(p)["model"] if p != "none" else ""
 
 
 def status() -> dict:
@@ -352,14 +353,12 @@ class ProviderError(RuntimeError):
     pass
 
 
-def _anthropic_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
+def _anthropic_loop(messages: list[dict], system: str, ctx: dict, cfg: dict) -> tuple[dict, int, int]:
     """Anthropic Messages API (official SDK): manual tool loop, structured final answer."""
     import anthropic
 
-    client = anthropic.Anthropic(
-        api_key=settings().ai_api_key, timeout=settings().ai_timeout_s, max_retries=1
-    )
-    model = _model()
+    client = anthropic.Anthropic(api_key=cfg["key"], timeout=settings().ai_timeout_s, max_retries=1)
+    model = cfg["model"]
     tin = tout = 0
     tools = [{**t, "strict": True} for t in TOOLS]
     kwargs = {}
@@ -417,14 +416,13 @@ def _anthropic_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict,
     raise ProviderError("too many tool rounds")
 
 
-def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
+def _openai_loop(messages: list[dict], system: str, ctx: dict, p: str, cfg: dict) -> tuple[dict, int, int]:
     """OpenAI-style chat completions (Z.ai GLM, OpenAI or a compatible service)."""
-    p = _provider()
-    base = (settings().ai_base_url or BASE_URLS.get(p, "")).rstrip("/")
+    base = (cfg["base_url"] or BASE_URLS.get(p, "")).rstrip("/")
     if not base.startswith("https://"):
         raise ProviderError("the AI service address must be https")
     url = base + "/chat/completions"
-    headers = {"Authorization": f"Bearer {settings().ai_api_key}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {cfg['key']}", "Content-Type": "application/json"}
     tools = [
         {
             "type": "function",
@@ -437,7 +435,7 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
     with httpx.Client(timeout=settings().ai_timeout_s) as client:
         for _ in range(MAX_TOOL_ROUNDS + 1):
             body = {
-                "model": _model(),
+                "model": cfg["model"],
                 "messages": msgs,
                 "tools": tools,
                 "tool_choice": "auto",
@@ -496,10 +494,87 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
     raise ProviderError("too many tool rounds")
 
 
+def _call_one(p: str, messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
+    cfg = config.provider(p)
+    if p == "anthropic":
+        return _anthropic_loop(messages, system, ctx, cfg)
+    return _openai_loop(messages, system, ctx, p, cfg)
+
+
 def _call(messages: list[dict], system: str, ctx: dict) -> tuple[dict, int, int]:
-    if _provider() == "anthropic":
-        return _anthropic_loop(messages, system, ctx)
-    return _openai_loop(messages, system, ctx)
+    """Ask the active service; if it fails and the panel allows it, the other one takes over.
+
+    Records which service and model answered in ctx["served_by"]."""
+    p = _provider()
+    first = list(messages)  # the loops append to the list they get
+    try:
+        out = _call_one(p, messages, system, ctx)
+        ctx["served_by"] = {"provider": p, "model": config.provider(p)["model"]}
+        return out
+    except ProviderError as e:
+        other = config.fallback()
+        if not other:
+            raise
+        log.warning("ai provider %s failed (%s); trying %s", p, e, other)
+        out = _call_one(other, list(first), system, ctx)
+        ctx["served_by"] = {"provider": other, "model": config.provider(other)["model"], "after": f"{p}: {e}"}
+        return out
+
+
+def test_key(p: str, key: str | None = None, model: str | None = None) -> dict:
+    """Check a key (the saved one, or a new one before saving) with the service itself.
+
+    Claude: looks up the model (no tokens used).  Z.ai: a one-token request."""
+    cfg = config.provider(p)
+    key = key or cfg["key"]
+    model = model or cfg["model"]
+    if not key:
+        return {"ok": False, "detail": "No key is set for this service."}
+    if not model:
+        return {"ok": False, "detail": "Choose a model first."}
+    if p == "anthropic":
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=key, timeout=20.0, max_retries=0)
+        try:
+            m = client.models.retrieve(model)
+        except anthropic.AuthenticationError:
+            return {"ok": False, "detail": "Anthropic did not accept this key."}
+        except anthropic.PermissionDeniedError:
+            return {"ok": False, "detail": f"This key may not use {model}."}
+        except anthropic.NotFoundError:
+            return {"ok": False, "detail": f"The key works, but Anthropic has no model called {model}."}
+        except anthropic.RateLimitError:
+            return {"ok": True, "detail": "Anthropic accepted the key (it is rate-limited just now)."}
+        except anthropic.APIStatusError as e:
+            return {"ok": False, "detail": f"Anthropic answered with error {e.status_code}."}
+        except anthropic.APIConnectionError:
+            return {"ok": False, "detail": "Anthropic could not be reached from the server."}
+        return {"ok": True, "detail": f"Anthropic accepted the key; {m.display_name} is available."}
+    if p == "zai":
+        body = {
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+            "thinking": {"type": "disabled"},
+        }
+        try:
+            r = httpx.post(
+                BASE_URLS["zai"] + "/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json=body,
+                timeout=30.0,
+            )
+        except httpx.HTTPError:
+            return {"ok": False, "detail": "Z.ai could not be reached from the server."}
+        if r.status_code == 200:
+            return {"ok": True, "detail": f"Z.ai accepted the key; {model} answered."}
+        if r.status_code in (401, 403):
+            return {"ok": False, "detail": "Z.ai did not accept this key."}
+        if r.status_code == 429:
+            return {"ok": True, "detail": "Z.ai accepted the key (it is rate-limited just now)."}
+        return {"ok": False, "detail": f"Z.ai answered with error {r.status_code} (check the model name)."}
+    return {"ok": False, "detail": "This service is set in .env and cannot be checked here."}
 
 
 # --------------------------------------------------------------------------------------
@@ -601,8 +676,8 @@ def ask(question: str, lang: str, mode: str, history: list[dict], ip: str) -> di
         "check": check,
         "analyses": [_public_card(ctx["analyses"][a]) for a in check["cited"]],
         "seconds": round(time.time() - t0, 1),
-        "provider": _provider(),
-        "model": _model(),
+        "provider": ctx.get("served_by", {}).get("provider", _provider()),
+        "model": ctx.get("served_by", {}).get("model", _model()),
     }
 
 
