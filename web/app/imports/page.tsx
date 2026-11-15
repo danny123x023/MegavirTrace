@@ -212,7 +212,7 @@ function CatalogSection({ cat, ov, canAct, act }: { cat: Catalog | null; ov: Ove
             ))}
           </div>
         </div>
-        <div className="dash-scroll">
+        <div className="dash-scroll" tabIndex={0} role="region" aria-label={t("Available from NASA (scrolls)")}>
           <table className="dash">
             <thead>
               <tr>
@@ -367,7 +367,7 @@ function ProgressSection({ ov, hist, query, setQuery, canAct, act }: {
             }
           }}>{t("Delete finished jobs")}</button>
         </div>
-        <div className="dash-scroll">
+        <div className="dash-scroll" tabIndex={0} role="region" aria-label={t("Import progress (scrolls)")}>
           <table className="dash">
             <thead>
               <tr>
@@ -514,7 +514,7 @@ function DatabaseSection({ db }: { db: Db | null }) {
           </div>
           <input type="search" aria-label={t("Filter by name or source")} placeholder={t("Filter by name or source")} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <div className="dash-scroll">
+        <div className="dash-scroll" tabIndex={0} role="region" aria-label={t("In the database (scrolls)")}>
           <table className="dash">
             <thead>
               <tr>

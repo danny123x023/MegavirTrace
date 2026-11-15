@@ -91,10 +91,12 @@ test("new measurements (2026-11-15): listed by theme; a short record opens on mo
   for (const name of ["Sea surface salinity", "Ocean chlorophyll (phytoplankton)", "Long-record rainfall", "Water vapour in the air", "Snow water (snowpack)"]) {
     await expect(what.locator("option", { hasText: name })).toHaveCount(1);
   }
-  // sea salinity is measured from space only since 2015: the monthly view opens first, so it can be tested
+  // sea salinity is measured from space only since 2015: it opens on the monthly chart, and the test
+  // uses yearly means, so a short, persistent record is honestly reported as not testable
   await page.goto("/explore?v=sea_salinity&place=preset%3Abay_of_bengal&label=Bay+of+Bengal");
   await expect(page.locator(".verdict h2")).toContainText("Sea surface salinity in the Bay of Bengal");
-  await expect(page.locator(".verdict h2")).not.toContainText("cannot be tested");
+  await expect(page).toHaveURL(/mode=monthly/);
+  await expect(page.getByText("The chart shows months; the statistics use their yearly means")).toBeVisible();
 });
 
 test("explore: search a place and switch modes", async ({ page }) => {
@@ -220,7 +222,7 @@ test("data import dashboard: NASA sources, history and stored data (read-only)",
   }
   // every source is listed; GISTEMP is stored as real data in every test setup
   const sources = page.locator("#cat-h").locator("xpath=ancestor::section").locator("tbody tr");
-  await expect(sources).toHaveCount(17);
+  await expect(sources).toHaveCount(23);
   const stored = page.locator("#db-h").locator("xpath=ancestor::section");
   await expect(stored.getByRole("row", { name: /Surface temperature change/ })).toContainText("Real NASA data");
   await stored.getByRole("button", { name: /^Nothing stored/ }).click();
