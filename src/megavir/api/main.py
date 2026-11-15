@@ -259,7 +259,7 @@ def analysis_related(body: RelatedIn):
 
 
 @app.get("/analysis/opposites")
-def analysis_opposites(variable: str = Query(max_length=40), mode: str = "annual", lang: str = "en"):
+def analysis_opposites(variable: str = Query(max_length=40), mode: str | None = None, lang: str = "en"):
     with connect() as conn:
         return service.run_opposites(conn, variable, mode=mode, lang=lang)
 

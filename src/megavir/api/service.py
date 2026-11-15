@@ -712,8 +712,13 @@ def run_scan(conn, raw: dict) -> dict:
     return {
         "region": region.public(with_geometry=False),
         "results": ok + [r for r in rows if "error" in r],
-        "note": "Benjamini–Hochberg control across the variables tested here (q ≤ 0.05), so testing many "
-        "variables does not manufacture discoveries.",
+        "note": (
+            "Control de Benjamini–Hochberg entre las variables evaluadas aquí (q ≤ 0,05), para que evaluar muchas "
+            "variables no fabrique descubrimientos."
+            if lang == "es"
+            else "Benjamini–Hochberg control across the variables tested here (q ≤ 0.05), so testing many "
+            "variables does not manufacture discoveries."
+        ),
     }
 
 
@@ -722,12 +727,20 @@ def run_scan(conn, raw: dict) -> dict:
 # --------------------------------------------------------------------------------------
 
 
-def run_opposites(conn, var_id: str, mode: str = "annual", max_pairs: int = 5, lang: str = "en") -> dict:
+def run_opposites(conn, var_id: str, mode: str | None = None, max_pairs: int = 5, lang: str = "en") -> dict:
+    """Preset regions whose trends point in opposite directions.
+
+    About 137 regions are tested, so about 7 would pass at the 5 % level by chance alone: a region
+    is listed only if its trend also passes Benjamini–Hochberg control across all the regions
+    tested (q <= 0.05), as in the scan, and is robust.
+    """
+    from megavir.engine.cellmap import benjamini_hochberg
     from megavir.places.presets import PRESETS
 
     if var_id not in VARIABLES:
         raise AnalysisError("unknown variable")
-    rising, falling = [], []
+    mode = mode or VARIABLES[var_id].default_mode
+    tested = []
     for p in PRESETS:
         if p["id"] in ("globe",):
             continue
@@ -745,12 +758,18 @@ def run_opposites(conn, var_id: str, mode: str = "annual", max_pairs: int = 5, l
         except AnalysisError:
             continue
         st = r["stats"]
-        if not st["significant"] or st["robustness"]["fragile"]:
+        p_joint = max(st["mk"]["p"], st["ols"]["p"]) if st["agree"] and st["ols"]["testable"] else 1.0
+        tested.append((p, r, st, p_joint))
+    q = benjamini_hochberg(np.array([t[3] for t in tested])) if tested else np.empty(0)
+    rising, falling = [], []
+    for (p, r, st, _), qq in zip(tested, q, strict=True):
+        if not st["significant"] or st["robustness"]["fragile"] or not qq <= 0.05:
             continue
         item = {
             "place": f"preset:{p['id']}",
             "name": p["name"],
             "per_decade": st["per_decade"]["sen"],
+            "q": float(qq),
             "analysis_id": r["id"],
         }
         (rising if st["direction"] == "rising" else falling).append(item)
@@ -789,7 +808,17 @@ def run_opposites(conn, var_id: str, mode: str = "annual", max_pairs: int = 5, l
         "rising": rising,
         "falling": falling,
         "pairs": pairs,
-        "note": "Only robust, significant trends among the preset regions are listed; each pair's difference is tested directly.",
+        "mode": mode,
+        "regions_tested": len(tested),
+        "note": (
+            f"Solo se listan las tendencias robustas que siguen siendo significativas tras el control de falsos "
+            f"descubrimientos entre las {len(tested)} regiones predefinidas evaluadas (Benjamini–Hochberg, q ≤ 0,05); "
+            "después se prueba directamente la diferencia de cada par."
+            if lang == "es"
+            else f"Only robust trends that stay significant after false-discovery control across the {len(tested)} "
+            "preset regions tested (Benjamini–Hochberg, q ≤ 0.05) are listed; each pair's difference is then tested "
+            "directly."
+        ),
     }
 
 

@@ -179,14 +179,16 @@ export function PlacePicker({
 
 export type ModeState = { mode: string; season: string; start: string; end: string };
 
-export function ModeControls({ value, onChange }: { value: ModeState; onChange: (m: ModeState) => void }) {
+const ALL_MODES: [string, string][] = [
+  ["annual", "Yearly"],
+  ["season", "Season"],
+  ["monthly", "Monthly anomalies"],
+  ["raw", "Raw months"],
+];
+
+export function ModeControls({ value, onChange, withRaw = true }: { value: ModeState; onChange: (m: ModeState) => void; withRaw?: boolean }) {
   const { t } = useI18n();
-  const modes = [
-    ["annual", "Yearly"],
-    ["season", "Season"],
-    ["monthly", "Monthly anomalies"],
-    ["raw", "Raw months"],
-  ];
+  const modes = withRaw ? ALL_MODES : ALL_MODES.filter(([k]) => k !== "raw");
   return (
     <div className="field">
       <span className="label" id="mode-label">{t("How")}</span>

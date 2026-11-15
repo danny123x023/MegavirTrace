@@ -308,6 +308,22 @@ const ES: Record<string, string> = {
   "GLOBE ground observations": "Observaciones GLOBE en tierra",
   // compare
   "Compare two places": "Comparar dos lugares",
+  "Are two regions really changing differently? The test runs on the year-by-year difference between them, so the ups and downs they share cancel out. Regions that move together are not under-tested, and regions that move apart are not over-tested.":
+    "¿Cambian de verdad de forma distinta dos regiones? La prueba se hace sobre la diferencia año a año entre ellas, así que los altibajos que comparten se cancelan. Las regiones que se mueven juntas no quedan infraevaluadas y las que se mueven en sentido contrario no quedan sobreevaluadas.",
+  "Choose a variable and two regions": "Elija una variable y dos regiones",
+  "Comparing…": "Comparando…",
+  "Difference, A minus B ({units})": "Diferencia, A menos B ({units})",
+  "A minus B": "A menos B",
+  "per decade · 95% range {lo} to {hi}": "por década · rango del 95 %: {lo} a {hi}",
+  "per decade · significant": "por década · significativa",
+  "per decade · not significant": "por década · no significativa",
+  "this variable": "esta variable",
+  "Scans the preset regions for robust trends in {name} that point in opposite directions and stay significant after false-discovery control across all the regions, then tests each pair's difference directly. The first scan of a variable can take a minute; results are stored.":
+    "Recorre las regiones predefinidas buscando tendencias robustas de {name} que vayan en direcciones opuestas y sigan siendo significativas tras el control de falsos descubrimientos entre todas las regiones; después prueba directamente la diferencia de cada par. El primer recorrido de una variable puede tardar un minuto; los resultados se guardan.",
+  "No pair of preset regions has robust, significant trends in opposite directions for this variable.":
+    "Ningún par de regiones predefinidas tiene tendencias robustas y significativas en direcciones opuestas para esta variable.",
+  "{view}: {rising} presets rising, {falling} falling (robust, significant after false-discovery control).":
+    "{view}: {rising} regiones subiendo, {falling} bajando (robustas, significativas tras el control de falsos descubrimientos).",
   "Region A": "Región A",
   "Region B": "Región B",
   "The trends really differ": "Las tendencias realmente difieren",

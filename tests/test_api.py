@@ -86,7 +86,10 @@ def test_compare_and_opposites(client):
     assert d["slope_per_decade"] > 0  # the planted trend falls from west to east
     assert "minus" in c["verdict"]["sentences"][0]
     o = client.get("/analysis/opposites", params={"variable": "air_temp"}).json()
-    assert "pairs" in o
+    assert "pairs" in o and o["mode"] == "annual" and "false-discovery" in o["note"]
+    assert all(r["q"] <= 0.05 for r in o["rising"] + o["falling"])  # control across the regions tested
+    gappy = client.get("/analysis/opposites", params={"variable": "land_water"}).json()
+    assert gappy["mode"] == "monthly"  # each variable's own view, as in Explore
 
 
 def test_scan_controls_false_discoveries(client):
