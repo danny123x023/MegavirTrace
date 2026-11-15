@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type Chosen, PlacePicker } from "@/components/Pickers";
 import { apiGet, apiPost, type Catalog } from "@/lib/api";
 import { fmt, fmtSigned } from "@/lib/format";
-import { useI18n, varText } from "@/lib/i18n";
+import { changeUnit, useI18n, varText } from "@/lib/i18n";
 
 const PLACE_TYPES: Record<string, { label: string; vars: string[] }> = {
   city: { label: "A city", vars: ["no2", "nightly_low", "daily_high", "downpour", "air_temp"] },
@@ -153,7 +153,7 @@ export default function StartPage() {
                   {scan.results.map((r) => (
                     <tr key={r.variable}>
                       <td>{r.analysis_id ? <Link href={`/explore?v=${r.variable}${placeQuery}`}>{r.name}</Link> : r.name}{r.data_kind && r.data_kind !== "real" ? ` (${r.data_kind})` : ""}</td>
-                      <td>{r.per_decade !== undefined ? `${fmtSigned(r.per_decade)} ${r.units}` : "—"}</td>
+                      <td>{r.per_decade !== undefined ? `${fmtSigned(r.per_decade)} ${changeUnit(r.units ?? "", lang)}` : "—"}</td>
                       <td>{r.q !== undefined ? fmt(r.q, 2) : "—"}</td>
                       <td style={{ textAlign: "left" }}>{r.error ? <span className="muted">{r.error}</span> : r.passes_fdr ? t("Changing (passes)") : r.significant ? t("Significant alone, not after control") : t("No clear trend")}</td>
                     </tr>

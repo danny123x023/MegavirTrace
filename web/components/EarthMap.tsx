@@ -5,7 +5,7 @@ import type { GeoJSONSource, LayerSpecification, Map as MLMap, StyleSpecificatio
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiPost, type CellMap } from "@/lib/api";
 import { fmt, fmtSigned } from "@/lib/format";
-import { unitText, useI18n } from "@/lib/i18n";
+import { changeUnit, useI18n } from "@/lib/i18n";
 import { divergingFor, isDark } from "@/lib/palette";
 
 type Outline = { geometry?: GeoJSON.Geometry | null; bbox?: number[] | null; label?: string };
@@ -138,7 +138,7 @@ const PIN = "M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21ZM12 7a2.5
 
 function Readout({ cursor: c, units: unitsRaw, hasCells, faded }: { cursor: Cursor; units: string; hasCells: boolean; faded: boolean }) {
   const { t, lang } = useI18n();
-  const units = unitText(unitsRaw, lang);
+  const units = changeUnit(unitsRaw, lang);
   return (
     <div className="map-readout" aria-hidden="true">
       <div className="map-readout-pos">
@@ -180,7 +180,7 @@ export default function EarthMap({ outlines, cells, variable = "", units: unitsR
   const live = useRef({ strength: 1, globe: false });
   live.current = { strength, globe };
   const { t, lang } = useI18n();
-  const units = unitText(unitsRaw, lang);
+  const units = changeUnit(unitsRaw, lang); // the map shows rates: "pp" for a % quantity
   const tNow = useRef(t);
   tNow.current = t;
 

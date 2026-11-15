@@ -1,7 +1,8 @@
 """Monte Carlo checks of the honesty commitment (run in CI).
 
 * false alarms of the agreement rule on trend-free AR(1) series:
-  at most 5 % at lag-1 autocorrelation 0.3, at most 7 % at 0.5 and at most 6 % at 0.7;
+  at most 5 % at lag-1 autocorrelation 0.3, at most 7 % at 0.5, at most 6 % at 0.7, and at most 7 % for
+  very persistent series (0.8 and 0.9, measured 4.4–5.8 % and 5.8–6.8 %: the rule's weak spot, disclosed);
 * the monthly views (tested on yearly means) stay near 5 % with year-to-year memory;
 * a synthetic trend is recovered inside its 95 % interval;
 * the two-region difference test keeps false alarms near 5 % whatever the correlation;
@@ -31,7 +32,7 @@ def ar1(rng, n, phi, reps):
 
 
 @pytest.mark.parametrize("n", [20, 30])
-@pytest.mark.parametrize("phi,limit", [(0.3, 0.05), (0.5, 0.07), (0.7, 0.06)])
+@pytest.mark.parametrize("phi,limit", [(0.3, 0.05), (0.5, 0.07), (0.7, 0.06), (0.8, 0.07), (0.9, 0.07)])
 def test_false_alarm_rate_yearly(n, phi, limit):
     rng = np.random.default_rng(1000 + n + int(phi * 10))
     t = np.arange(n) + 0.5

@@ -29,6 +29,11 @@ const MoonIcon = () => (
     <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
   </svg>
 );
+const MenuIcon = ({ open }: { open: boolean }) => (
+  <svg {...ICON} width={18} height={18}>
+    {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+  </svg>
+);
 const ExpandIcon = () => (
   <svg {...ICON}>
     <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
@@ -40,6 +45,19 @@ export default function Nav() {
   const { lang, setLang, t } = useI18n();
   const [dark, setDark] = useState(false);
   const [wide, setWide] = useState(true);
+  // phones: the page links fold into a menu, so the header is one short row
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => setMenuOpen(false), [path]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
 
   useEffect(() => {
     const d = document.documentElement;
@@ -85,7 +103,7 @@ export default function Nav() {
 
   if (path?.startsWith("/embed")) return null;
   return (
-    <header className="site-header">
+    <header className={menuOpen ? "site-header menu-open" : "site-header"}>
       <Link href="/" className="brand">
         <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -94,7 +112,10 @@ export default function Nav() {
         <span className="brand-name">MegavirTrace</span>
         <span className="brand-tag">{t("Earth system trend detective")}</span>
       </Link>
-      <nav className="site-nav" aria-label="Main">
+      <button type="button" className="tool-btn menu-btn" aria-label={t("Menu")} aria-expanded={menuOpen} aria-controls="site-nav" onClick={() => setMenuOpen((o) => !o)}>
+        <MenuIcon open={menuOpen} />
+      </button>
+      <nav id="site-nav" className="site-nav" aria-label="Main">
         {LINKS.map((l) => (
           <Link key={l.href} href={l.href} aria-current={path === l.href ? "page" : undefined}>
             {t(l.label)}

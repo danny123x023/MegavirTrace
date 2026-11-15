@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, exportUrl, type Provenance, type Stats, type Verdict } from "@/lib/api";
 import { fmt, fmtP, fmtSigned } from "@/lib/format";
-import { unitText, useI18n } from "@/lib/i18n";
+import { changeUnit, useI18n } from "@/lib/i18n";
 import Panel, { FullscreenButton } from "@/components/Panel";
 
 const STATUS: Record<string, { icon: string; label: string }> = {
@@ -67,19 +67,24 @@ const pText = (p: number) => `p ${fmtP(p).startsWith("<") ? fmtP(p) : "= " + fmt
 
 export function StatTiles({ stats, units: unitsRaw }: { stats: Stats; units: string }) {
   const { t, lang } = useI18n();
-  const units = unitText(unitsRaw, lang);
+  const units = changeUnit(unitsRaw, lang); // tiles: "pp" for a % quantity
+  const unitsLong = changeUnit(unitsRaw, lang, true); // sentences: "percentage points"
   const pd = stats.per_decade;
+  const range = (lo: number | string, hi: number | string) =>
+    typeof lo === "number" && typeof hi === "number" && Number.isFinite(lo) && Number.isFinite(hi)
+      ? t("per decade · 95% range {a} to {b}", { a: fmtSigned(lo), b: fmtSigned(hi) })
+      : t("per decade · no meaningful 95% range (too few independent values)");
   const ny = typeof stats.years_needed === "number" ? stats.years_needed : Infinity;
   const tiles = [
-    { label: t("Rate (Sen's slope)"), value: `${fmtSigned(pd.sen)} ${units}`, sub: t("per decade · 95% range {a} to {b}", { a: fmtSigned(pd.sen_low), b: fmtSigned(pd.sen_high) }) },
-    { label: t("Least-squares rate"), value: `${fmtSigned(pd.ols)} ${units}`, sub: t("per decade · 95% range {a} to {b}", { a: fmtSigned(pd.ols_low), b: fmtSigned(pd.ols_high) }) },
+    { label: t("Rate (Sen's slope)"), value: `${fmtSigned(pd.sen)} ${units}`, sub: range(pd.sen_low, pd.sen_high) },
+    { label: t("Least-squares rate"), value: `${fmtSigned(pd.ols)} ${units}`, sub: range(pd.ols_low, pd.ols_high) },
     { label: t("Mann–Kendall test"), value: pText(stats.mk.p), sub: `${stats.seasonal_test ? t("seasonal test, ") : ""}${t("τ = {tau}, corrected for memory", { tau: fmt(stats.mk.tau, 2) })}` },
     { label: t("Least-squares test"), value: pText(stats.ols.p), sub: t("t-test with {neff} effective values of {n}", { neff: fmt(stats.ols.n_eff, 2), n: stats.n }) },
     { label: t("Year-to-year memory"), value: `r₁ = ${fmt(stats.ols.r1, 2)}`, sub: t("lag-1 autocorrelation, small-sample corrected (raw {raw})", { raw: fmt(stats.ols.r1_raw, 2) }) },
     { label: t("Size against the noise"), value: t(stats.effect_label), sub: t("trend over the record ÷ scatter = {r}", { r: fmt(stats.effect_ratio, 2) }) },
     { label: t("Years needed to detect"), value: Number.isFinite(ny) ? t("{n} years", { n: Math.ceil(ny) }) : "—", sub: Number(stats.years_more) > 0 ? t("{n} more than this record", { n: String(stats.years_more) }) : t("this record is long enough for a trend this size") },
     { label: t("Robustness"), value: stats.robustness.fragile ? t("Fragile") : t("Holds"), sub: stats.robustness.fragile ? t("changes direction in a half or without one year") : t("both halves, no end years, any one year left out") },
-    paceTile(stats, units, t),
+    paceTile(stats, unitsLong, t),
   ];
   return (
     <section aria-label={t("Statistics")}>
@@ -97,10 +102,10 @@ export function StatTiles({ stats, units: unitsRaw }: { stats: Stats; units: str
           <summary>{t("Extra clues (exploratory)")}</summary>
           <ul className="small">
             {stats.turning?.preferred && (
-              <li>{t("A turning point near {year}: {before} then {after} {units} per decade.", { year: String(Math.floor(stats.turning.at)), before: fmtSigned(stats.turning.slope_before * 10), after: fmtSigned(stats.turning.slope_after * 10), units })}</li>
+              <li>{t("A turning point near {year}: {before} then {after} {units} per decade.", { year: String(Math.floor(stats.turning.at)), before: fmtSigned(stats.turning.slope_before * 10), after: fmtSigned(stats.turning.slope_after * 10), units: unitsLong })}</li>
             )}
             {stats.unusual.map((u) => (
-              <li key={u.label}>{t("Unusual: {label}, {dep} {units} from the trend line ({sd} standard deviations).", { label: u.label, dep: fmtSigned(u.departure, 2), units, sd: fmt(u.sd_units, 2) })}</li>
+              <li key={u.label}>{t("Unusual: {label}, {dep} {units} from the trend line ({sd} standard deviations).", { label: u.label, dep: fmtSigned(u.departure, 2), units: unitsLong, sd: fmt(u.sd_units, 2) })}</li>
             ))}
           </ul>
         </details>

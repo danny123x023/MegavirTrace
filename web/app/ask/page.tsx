@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { fmtP, fmtSigned } from "@/lib/format";
-import { useI18n } from "@/lib/i18n";
+import { changeUnit, useI18n } from "@/lib/i18n";
 import Panel from "@/components/Panel";
 
 type Card = {
@@ -203,8 +203,8 @@ export default function AskPage() {
                 {t.r.analyses.map((a) => (
                   <div className="tile" key={a.analysis_id}>
                     <div className="label">{a.card.variable} · {a.card.region ?? `${a.card.region_a} vs ${a.card.region_b}`}{a.card.data_kind !== "real" ? ` · ${a.card.data_kind} data` : ""}</div>
-                    {a.card.per_decade && <div className="value">{fmtSigned(a.card.per_decade.sen)} {a.card.units}/decade</div>}
-                    {a.card.difference_per_decade !== undefined && <div className="value">{fmtSigned(a.card.difference_per_decade)} {a.card.units}/decade</div>}
+                    {a.card.per_decade && <div className="value">{fmtSigned(a.card.per_decade.sen)} {tr("{units} per decade", { units: changeUnit(a.card.units, lang) })}</div>}
+                    {a.card.difference_per_decade !== undefined && <div className="value">{fmtSigned(a.card.difference_per_decade)} {tr("{units} per decade", { units: changeUnit(a.card.units, lang) })}</div>}
                     <div className="sub">
                       {a.card.significant ? "Significant (both tests agree)" : "Not significant"}
                       {a.card.p_mann_kendall !== undefined && ` · MK p ${fmtP(a.card.p_mann_kendall)}`}

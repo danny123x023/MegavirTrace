@@ -212,3 +212,17 @@ def test_follow_up_questions_are_checked():
     bad = dict(good, follow_up_questions=["Why is it warming 1.5 °C per decade?"])
     out = verify(bad, {"abc": r}, "en")
     assert not out["ok"] and out["unmatched_numbers"]
+
+
+def test_percent_quantities_use_percentage_points_and_never_percent_per_decade():
+    """Sea ice in %: '2.9 percentage points per decade' is a checked rate; '2.9% per decade' is rejected,
+    because it would mean a relative change the engine never computed."""
+    r = _trend_result(sen=-2.9, direction="falling", region="the Arctic")
+    r["stats"]["per_decade"].update(sen=-2.9, sen_low=-3.6, sen_high=-2.3)
+    assert _check("The Arctic is falling by about 2.9 percentage points per decade.", r).ok
+    assert _check("En el Ártico baja unos 2,9 puntos porcentuales por década.", r, lang="es").ok
+    for bad in ("2.9% per decade", "2.9 % per decade", "2.9 %/decade"):
+        res = _check(f"The Arctic is falling by about {bad}.", r)
+        assert not res.ok and res.unmatched, bad
+    # a made-up rate written in percentage points is still caught as a rate
+    assert not _check("The Arctic is falling by about 4.7 percentage points per decade.", r).ok

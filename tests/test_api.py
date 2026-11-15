@@ -304,3 +304,13 @@ def test_moves_together_endpoint(client):
     assert client.get(f"/reports/{d['id']}/export", params={"format": "pdf"}).status_code == 422
     same = client.post("/analysis/related", json={**body, "variable_b": "air_temp"}, headers=ORIGIN)
     assert same.status_code == 422
+
+
+def test_results_are_compressed_but_the_ai_progress_stream_is_not(client):
+    """A big region's map is megabytes of JSON; the Ask page's progress lines must still arrive one by one."""
+    gz = {**ORIGIN, "Accept-Encoding": "gzip"}
+    body = {"variable": "air_temp", "region": {"place": "country:TST"}}
+    r = client.post("/analysis/trend", json=body, headers=gz)
+    assert r.status_code == 200 and r.headers.get("content-encoding") == "gzip" and r.json()["verdict"]
+    s = client.post("/ai/ask/stream", json={"question": "Is Testland warming?"}, headers=gz)
+    assert s.status_code == 200 and "content-encoding" not in s.headers

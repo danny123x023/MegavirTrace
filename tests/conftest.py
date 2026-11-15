@@ -19,6 +19,9 @@ os.environ["MEGAVIR_DATABASE_URL"] = TEST_DB
 os.environ.setdefault("MEGAVIR_ALLOWED_ORIGINS", '["http://localhost:3000"]')
 os.environ["MEGAVIR_SERVE_KINDS"] = '["synthetic"]'
 os.environ["MEGAVIR_AI_PROVIDER"] = "none"
+# every test shares one app and so one per-IP limiter: a limit of 60 a minute made a test fail whenever the
+# tests before it happened to send enough requests (test_rate_limit_answers_429 checks the limiter itself)
+os.environ["MEGAVIR_ANALYSIS_PER_MINUTE_PER_IP"] = "100000"
 # never the server's own Admin-panel AI settings (keys, active service)
 os.environ["MEGAVIR_AI_SETTINGS_FILE"] = os.path.join(
     __import__("tempfile").mkdtemp(prefix="mt-ai-"), "ai_settings.json"

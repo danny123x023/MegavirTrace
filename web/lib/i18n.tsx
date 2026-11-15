@@ -79,10 +79,10 @@ const ES: Record<string, string> = {
   "Computing… the first analysis of a region can take a few seconds; repeats are instant.":
     "Calculando… el primer análisis de una región puede tardar unos segundos; las repeticiones son instantáneas.",
   "Updating…": "Actualizando…",
-  "Raw months are shown as measured; the statistics use the yearly means of the monthly anomalies (each month compared with the same month in other years).":
-    "Los meses se muestran tal como se midieron; las estadísticas usan las medias anuales de las anomalías mensuales (cada mes comparado con el mismo mes de otros años).",
-  "The chart shows months; the statistics use their yearly means, because neighbouring months are not independent.":
-    "El gráfico muestra meses; las estadísticas usan sus medias anuales, porque los meses vecinos no son independientes.",
+  "Raw months are shown as measured; the statistics use the yearly means of the monthly anomalies (each month compared with the same month in the other years selected, so changing the years shifts that baseline a little).":
+    "Los meses se muestran tal como se midieron; las estadísticas usan las medias anuales de las anomalías mensuales (cada mes comparado con el mismo mes de los demás años elegidos, así que cambiar los años desplaza un poco esa referencia).",
+  "The chart shows each month against its usual value over the years selected (changing the years shifts that baseline a little); the statistics use the yearly means, because neighbouring months are not independent.":
+    "El gráfico muestra cada mes frente a su valor habitual en los años elegidos (cambiar los años desplaza un poco esa referencia); las estadísticas usan las medias anuales, porque los meses vecinos no son independientes.",
   "Where is it changing?": "¿Dónde está cambiando?",
   "The statistics": "Las estadísticas",
   "Computed in {ms} ms the first time; stored and reused for this data version.":
@@ -120,6 +120,8 @@ const ES: Record<string, string> = {
   "Rate (Sen's slope)": "Ritmo (pendiente de Sen)",
   "Least-squares rate": "Ritmo por mínimos cuadrados",
   "per decade · 95% range {a} to {b}": "por década · rango del 95 %: {a} a {b}",
+  "per decade · no meaningful 95% range (too few independent values)": "por década · sin rango del 95 % con sentido (muy pocos valores independientes)",
+  "the larger of the two tests' p values; both must pass": "el mayor de los valores p de las dos pruebas; ambas deben superarse",
   "Mann–Kendall test": "Prueba de Mann–Kendall",
   "Least-squares test": "Prueba de mínimos cuadrados",
   "seasonal test, ": "prueba estacional, ",
@@ -282,6 +284,7 @@ const ES: Record<string, string> = {
   "usual: {v}": "habitual: {v}",
   "marked": "marcado",
   "Dark": "Oscuro",
+  "Menu": "Menú",
   "Type a question first (at least 3 characters).": "Escribe primero una pregunta (al menos 3 caracteres).",
   "Zoom in": "Acercar",
   "Zoom out": "Alejar",
@@ -704,6 +707,14 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 export const useI18n = () => useContext(I18n);
 
 /** Units in the page's language, as the server writes them in verdicts: "mm/month" is "mm/mes" in Spanish. */
+/** The unit of a rate, difference or departure.  A change in a quantity measured in % is in
+ *  percentage points (60 % to 57 % is 3 points, a 5 % relative fall); "% per decade" would read as
+ *  a relative rate.  Short form for tiles and legends, long form inside sentences. */
+export function changeUnit(units: string, lang: Lang, long = false): string {
+  if ((units ?? "").trim() === "%") return lang === "es" ? (long ? "puntos porcentuales" : "p. p.") : long ? "percentage points" : "pp";
+  return unitText(units, lang);
+}
+
 export function unitText(units: string, lang: Lang): string {
   if (lang !== "es" || !units) return units;
   return units.replace("/month", "/mes").replace("/year", "/año").replace("/hour", "/hora").replace("/season", "/estación").replace("molecules", "moléculas");
