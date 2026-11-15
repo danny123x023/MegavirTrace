@@ -488,7 +488,7 @@ body:has(.embed-card) main { padding: 8px; }
 .ai-provider { padding: 16px 18px; box-shadow: none; }
 .ai-provider h3 { display: flex; gap: 8px; align-items: center; margin: 0 0 6px; font-size: 1rem; }
 .ai-provider .inline-form { margin-top: 10px; }
-.ai-provider .inline-form .field input { min-width: 0; width: min(100%, 300px); }
+.ai-provider .inline-form .field input, .ai-provider .inline-form .field select { min-width: 0; width: min(100%, 300px); }
 .ok-text { color: var(--ok-ink); font-weight: 600; }
 .error-text { color: var(--fail-ink); font-weight: 600; }
 .signed-in { margin: 0 0 14px; }

@@ -211,6 +211,10 @@ const ES: Record<string, string> = {
   "Model": "Modelo",
   "Save model": "Guardar modelo",
   "Model saved.": "Modelo guardado.",
+  "Choose a model…": "Elige un modelo…",
+  "saved": "guardado",
+  "Other model…": "Otro modelo…",
+  "Model name": "Nombre del modelo",
   "Test the key": "Probar la clave",
   "Remove key": "Quitar la clave",
   "Remove this key from the server? If this service is answering now, the AI is switched off until a key is added again.":

@@ -25,6 +25,7 @@ type Act = <T>(fn: () => Promise<T>, ok?: (r: T) => string | null) => Promise<T 
 
 const AI = "M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z";
 const PROVIDERS: Provider[] = ["anthropic", "zai"];
+const OTHER_MODEL = "__other__"; // the dropdown entry that opens a box for any model name
 
 export default function AdminPage() {
   const { t } = useI18n();
@@ -160,10 +161,12 @@ function ProviderCard({ p, v, active, act }: { p: Provider; v: ProviderView; act
   const { t } = useI18n();
   const [key, setKey] = useState("");
   const [model, setModel] = useState(v.model);
+  const [typing, setTyping] = useState(false); // "Other model…" was chosen: a name is typed
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<{ ok: boolean; detail: string } | null>(null);
-  useEffect(() => setModel(v.model), [v.model]);
-  const listId = `models-${p}`;
+  useEffect(() => { setModel(v.model); setTyping(false); }, [v.model]);
+  const known = v.suggested_models;
+  const custom = typing || (!!model && !known.includes(model)); // a model that is not in the list
   return (
     <div className="ai-provider card">
       <h3>
@@ -203,10 +206,29 @@ function ProviderCard({ p, v, active, act }: { p: Provider; v: ProviderView; act
       }}>
         <div className="field">
           <label htmlFor={`model-${p}`}>{t("Model")}</label>
-          <input id={`model-${p}`} type="text" list={listId} spellCheck={false} value={model} onChange={(e) => setModel(e.target.value)} />
-          <datalist id={listId}>{v.suggested_models.map((m) => <option key={m} value={m} />)}</datalist>
+          <select
+            id={`model-${p}`} value={custom ? OTHER_MODEL : model}
+            onChange={(e) => {
+              const m = e.target.value;
+              if (m === OTHER_MODEL) { setTyping(true); setModel(known.includes(model) ? "" : model); }
+              else { setTyping(false); setModel(m); }
+            }}
+          >
+            {!model && !custom && <option value="" disabled>{t("Choose a model…")}</option>}
+            {known.map((m) => <option key={m} value={m}>{m}{m === v.model ? ` (${t("saved")})` : ""}</option>)}
+            <option value={OTHER_MODEL}>{t("Other model…")}</option>
+          </select>
         </div>
-        <button type="submit" disabled={!model.trim() || model.trim() === v.model}>{t("Save model")}</button>
+        {custom && (
+          <div className="field">
+            <label htmlFor={`model-name-${p}`}>{t("Model name")}</label>
+            <input
+              id={`model-name-${p}`} type="text" spellCheck={false} autoComplete="off" value={model}
+              placeholder={p === "anthropic" ? "claude-…" : "glm-…"} onChange={(e) => setModel(e.target.value)}
+            />
+          </div>
+        )}
+        <button type="submit" className={model.trim() && model.trim() !== v.model ? "primary" : undefined} disabled={!model.trim() || model.trim() === v.model}>{t("Save model")}</button>
       </form>
 
       {v.key_set && (

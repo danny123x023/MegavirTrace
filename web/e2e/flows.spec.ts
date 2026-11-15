@@ -327,6 +327,20 @@ test.describe("admin panel", () => {
     await expect(page.getByRole("heading", { name: "NASA Earthdata account" })).toBeVisible();
     const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
     expect(axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    // models are picked from a list (any other name can be typed after "Other model…")
+    const claudeModel = page.getByRole("combobox", { name: "Model" }).first();
+    await expect(claudeModel.locator("option")).toContainText(["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
+    const before = await claudeModel.inputValue();
+    const pick = before === "claude-sonnet-5-5" ? "claude-haiku-5-5" : "claude-sonnet-5-5";
+    await claudeModel.selectOption(pick);
+    await page.getByRole("button", { name: "Save model" }).first().click();
+    await expect(page.getByText("Model saved.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Claude (Anthropic)", level: 3 }).locator("xpath=..")
+      .getByRole("combobox", { name: "Model" })).toHaveValue(pick);
+    await claudeModel.selectOption({ label: "Other model…" });
+    await expect(page.getByLabel("Model name")).toBeVisible();
+    await claudeModel.selectOption(pick);
+    await expect(page.getByLabel("Model name")).toHaveCount(0);
     // switching the AI off is immediate (the test servers keep their own settings file)
     await page.getByRole("button", { name: /^Off/ }).click();
     await expect(page.getByRole("button", { name: /^Off/ })).toHaveAttribute("aria-pressed", "true");
