@@ -26,7 +26,7 @@ from megavir.engine.aggregate import (
     per_cell_values,
     region_mean,
 )
-from megavir.engine.cellmap import cell_trends
+from megavir.engine.cellmap import block_size, cell_trends, merge_blocks
 from megavir.engine.compare import compare_series
 from megavir.engine.stats import NotEnoughData, analyse_trend
 from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
@@ -34,7 +34,8 @@ from megavir.places.geometry import apply_domain, cells_for
 from megavir.store import GridSpec, Version, active_versions, read_cells, read_mask
 
 ENGINE_VERSION = "2026.11-7"
-MAX_MAP_CELLS = 40_000
+MAX_MAP_CELLS = 40_000  # mapped cell by cell up to this many
+MAP_TARGET_CELLS = 20_000  # bigger regions: cells merged into blocks, at most this many
 
 
 class AnalysisError(ValueError):
@@ -152,12 +153,9 @@ class RegionalData:
     cube: np.ndarray  # (n_months, n_cells) for the cell map
 
 
-def regional_monthly(conn, var_id: str, region: Region, need_cells: bool = False) -> RegionalData:
-    var = get_variable(var_id)
-    versions = active_versions(conn)
-    v = versions.get(var_id)
-    if not v:
-        raise AnalysisError(f"{var.name} is not loaded yet")
+def region_cells(conn, var, v: Version, region: Region):
+    """The grid cells of a region that count for a variable, with their weights in ``area``
+    (cos(latitude) x share of the cell inside the region x the variable's land/sea mask)."""
     rc = cells_for(region.descriptor(), v.spec)
     if rc.size == 0:
         raise AnalysisError(_outside_message(var, v))
@@ -174,12 +172,21 @@ def regional_monthly(conn, var_id: str, region: Region, need_cells: bool = False
         raise AnalysisError(
             f"{region.name} has no {where} cells, and {var.name.lower()} is measured only over {where}."
         )
-    ii, jj, w = rc.ii[keep], rc.jj[keep], weights[keep]
-    cube = read_cells(conn, v, ii, jj)
+    return type(rc)(rc.ii[keep], rc.jj[keep], rc.frac[keep], weights[keep], rc.lat[keep], rc.lon[keep])
+
+
+def regional_monthly(conn, var_id: str, region: Region, need_cells: bool = False) -> RegionalData:
+    var = get_variable(var_id)
+    versions = active_versions(conn)
+    v = versions.get(var_id)
+    if not v:
+        raise AnalysisError(f"{var.name} is not loaded yet")
+    sub = region_cells(conn, var, v, region)
+    w = sub.area
+    cube = read_cells(conn, v, sub.ii, sub.jj)
     if not np.isfinite(cube).any():
         raise AnalysisError(_outside_message(var, v))
     mean, cov = region_mean(cube, w)
-    sub = type(rc)(ii, jj, rc.frac[keep], w, rc.lat[keep], rc.lon[keep])
     return RegionalData(v, v.months, mean, cov, sub, w, cube if need_cells else np.empty((0, 0)))
 
 
@@ -208,9 +215,12 @@ def cached(conn, fid: str) -> dict | None:
     return r["result"] if r else None
 
 
-def store(conn, fid: str, kind: str, request: dict, version_ids: list[int], result: dict) -> None:
+def store(
+    conn, fid: str, kind: str, request: dict, version_ids: list[int], result: dict, replace: bool = False
+) -> None:
+    conflict = "DO UPDATE SET result = EXCLUDED.result" if replace else "DO NOTHING"
     conn.execute(
-        "INSERT INTO analysis (id, kind, request, versions, result) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
+        f"INSERT INTO analysis (id, kind, request, versions, result) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) {conflict}",
         (fid, kind, json.dumps(request), version_ids, json.dumps(result, allow_nan=False)),
     )
     conn.commit()
@@ -294,7 +304,8 @@ def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
     if not v:
         raise AnalysisError(f"{VARIABLES[req['variable']].name} is not loaded yet")
     fid = fingerprint("trend", req, [v.id])
-    if use_cache and (hit := cached(conn, fid)):
+    hit = cached(conn, fid) if use_cache else None
+    if hit and not _map_was_too_big(hit):
         return hit
     t0 = time.time()
     var = VARIABLES[req["variable"]]
@@ -365,8 +376,14 @@ def run_trend(conn, raw_request: dict, use_cache: bool = True) -> dict:
         "compute_ms": None,
     }
     result["compute_ms"] = round((time.time() - t0) * 1000)
-    store(conn, fid, "trend", req, [v.id], result)
+    store(conn, fid, "trend", req, [v.id], result, replace=hit is not None)
     return result
+
+
+def _map_was_too_big(result: dict) -> bool:
+    """Stored before big regions were mapped in blocks: compute again (with the map)."""
+    cm = result.get("cell_map")
+    return isinstance(cm, dict) and str(cm.get("skipped", "")).startswith("region too large")
 
 
 def _months_used(months: np.ndarray, s) -> np.ndarray:
@@ -389,21 +406,43 @@ def _jsonable(obj):
     return obj
 
 
+CAVEATS = {
+    "region": "Which cells pass depends on the region tested: the false-discovery control runs over this region's cells.",
+    "view": "Which cells pass depends on the area in view: the false-discovery control runs over the cells shown.",
+}
+
+
 def _cell_map(rd: RegionalData, req: dict, var) -> dict | None:
-    n_cells = rd.cube.shape[1]
-    if n_cells > MAX_MAP_CELLS:
-        return {"skipped": f"region too large for a cell map ({n_cells} cells)"}
+    return cell_map_for(rd.cube, rd.months, rd.cells, rd.version.spec, req, var, "region")
+
+
+def cell_map_for(cube: np.ndarray, months: np.ndarray, cells, spec, req: dict, var, scope: str) -> dict:
+    """A trend for every cell, then false-discovery control over the cells mapped.
+
+    Up to MAX_MAP_CELLS cells are mapped one by one.  Bigger regions (the whole Earth has 259,200
+    cells at 0.5°) are mapped in k x k blocks of cells, so the whole region still gets a map;
+    the page then asks for full detail of the area in view (run_cells) as the visitor zooms in.
+    """
+    n_cells = cube.shape[1]
     if n_cells < 2:
         return {"skipped": "the region covers a single grid cell"}
+    k = 1 if n_cells <= MAX_MAP_CELLS else block_size(cells.ii, cells.jj, MAP_TARGET_CELLS)
+    lat, lon, frac = cells.lat, cells.lon, cells.frac
+    if k > 1:
+        merged = merge_blocks(cube, cells.ii, cells.jj, cells.area, cells.frac, k)
+        cube = merged["cube"]
+        lat = spec.lat0 + spec.res * (merged["bi"] * k + (k - 1) / 2)
+        lon = spec.lon0 + spec.res * (merged["bj"] * k + (k - 1) / 2)
+        frac = merged["frac"]
     if req["mode"] in ("monthly", "raw"):
-        t, vals, grp = per_cell_monthly_anomalies(rd.months, rd.cube, req["start_year"], req["end_year"])
+        t, vals, grp = per_cell_monthly_anomalies(months, cube, req["start_year"], req["end_year"])
         if np.unique(t.astype(int)).size < 8:
             return {"skipped": "not enough years for a cell map"}
         res = cell_trends(t, vals, group=grp)
         basis = "monthly anomalies (seasonal test)"
     else:
         mode = "season" if req["mode"] == "season" else "annual"
-        t, vals = per_cell_values(rd.months, rd.cube, mode, req["season"], req["start_year"], req["end_year"])
+        t, vals = per_cell_values(months, cube, mode, req["season"], req["start_year"], req["end_year"])
         if t.size < 8:
             return {"skipped": "not enough years for a cell map"}
         factor = 1.0
@@ -412,21 +451,67 @@ def _cell_map(rd: RegionalData, req: dict, var) -> dict | None:
         res = cell_trends(t, vals * factor)
         basis = "yearly values" if mode == "annual" else f"{req['season']} values"
     return {
-        "res": rd.version.spec.res,
-        "lat": _nan_to_none(rd.cells.lat),
-        "lon": _nan_to_none(rd.cells.lon),
-        "frac": _nan_to_none(rd.cells.frac),
+        "res": spec.res * k,
+        "native_res": spec.res,
+        "block": k,
+        "scope": scope,
+        "lat": _nan_to_none(lat),
+        "lon": _nan_to_none(lon),
+        "frac": _nan_to_none(frac),
         "slope_per_decade": _nan_to_none(res["slope"] * 10),
         "p": _nan_to_none(res["p"]),
         "q": _nan_to_none(res["q"]),
         "passes": [bool(x) for x in res["passes"]],
         "alpha_fdr": res["alpha_fdr"],
-        "n_cells": int(n_cells),
+        "n_cells": int(cube.shape[1]),
         "n_pass": int(np.sum(res["passes"])),
         "n_raw_significant": int(np.sum(res["raw_significant"])),
         "basis": basis,
-        "caveat": "Which cells pass depends on the region tested: the false-discovery control runs over this region's cells.",
+        "caveat": CAVEATS[scope],
     }
+
+
+def _view_box(view) -> list[float]:
+    if not view or len(view) != 4:
+        raise AnalysisError("view must be [west, south, east, north]")
+    w, so, e, n = (float(x) for x in view)
+    w, e = max(-180.0, min(180.0, w)), max(-180.0, min(180.0, e))
+    so, n = max(-90.0, min(90.0, so)), max(-90.0, min(90.0, n))
+    if not so < n or w == e:
+        raise AnalysisError("the view box is empty")
+    return [round(w, 3), round(so, 3), round(e, 3), round(n, 3)]
+
+
+def run_cells(conn, raw: dict, use_cache: bool = True) -> dict:
+    """The cell map of the part of a region in view, at the finest resolution that fits.
+
+    Reads only the tiles under the view.  The false-discovery control runs over the cells
+    shown, so which cells pass can differ from the whole-region map (the result says so).
+    """
+    req = normalise_request({**raw, "cell_map": True})
+    view = _view_box(raw.get("view"))
+    v = active_versions(conn).get(req["variable"])
+    if not v:
+        raise AnalysisError(f"{VARIABLES[req['variable']].name} is not loaded yet")
+    fid = fingerprint("cells", {**req, "view": view}, [v.id])
+    if use_cache and (hit := cached(conn, fid)):
+        return hit
+    var = VARIABLES[req["variable"]]
+    region = resolve_region(conn, req["region"], req["lang"])
+    rc = region_cells(conn, var, v, region)
+    w, so, e, n = view
+    lon_in = (rc.lon >= w) & (rc.lon <= e) if w < e else (rc.lon >= w) | (rc.lon <= e)
+    inside = lon_in & (rc.lat >= so) & (rc.lat <= n)
+    if not inside.any():
+        result = {"skipped": "no cells of the region in view", "view": view}
+    else:
+        sub = type(rc)(
+            rc.ii[inside], rc.jj[inside], rc.frac[inside], rc.area[inside], rc.lat[inside], rc.lon[inside]
+        )
+        cube = read_cells(conn, v, sub.ii, sub.jj)
+        result = {**cell_map_for(cube, v.months, sub, v.spec, req, var, "view"), "view": view}
+    store(conn, fid, "cells", {**req, "view": view}, [v.id], result)
+    return result
 
 
 # --------------------------------------------------------------------------------------

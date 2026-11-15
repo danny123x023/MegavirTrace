@@ -271,3 +271,17 @@ test("detective cases: cards show measured findings; a case runs step by step to
   const href = new URL((await page.getByRole("link", { name: "See the full record in Explore" }).first().getAttribute("href")) as string, "http://x");
   expect([href.pathname, href.searchParams.get("v"), href.searchParams.get("place")]).toEqual(["/", "no2", "preset:north_china_plain"]);
 });
+
+test("cell map of the whole Earth: merged blocks, full detail when zoomed in", async ({ page }) => {
+  await page.goto("/?v=air_temp&place=preset%3Aglobe&label=Whole%20Earth");
+  await expect(page.locator(".verdict h2")).toBeVisible({ timeout: 120000 });
+  const map = page.locator("section[aria-label='Where inside the region']");
+  const note = map.locator(".map-detail");
+  await expect(note).toContainText("cells are merged into 2° blocks");
+  await map.scrollIntoViewIfNeeded();
+  const bb = (await map.locator(".map-box").boundingBox())!;
+  await page.mouse.move(bb.x + bb.width * 0.52, bb.y + bb.height * 0.33);
+  for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(250); }
+  await expect(note).toContainText("Full detail for the area in view", { timeout: 60000 });
+  await expect(map).toContainText("the false-discovery control runs over the cells shown");
+});

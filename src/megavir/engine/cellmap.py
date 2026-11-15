@@ -190,3 +190,66 @@ def _cell_tests_inner(
     p = np.where(enough, p, np.nan)
     sen = np.where(enough, sen, np.nan)
     return sen, p, n, r1
+
+
+# --------------------------------------------------------------------------------------
+# Big regions: merge cells into blocks
+# --------------------------------------------------------------------------------------
+
+
+def block_size(ii: np.ndarray, jj: np.ndarray, target: int) -> int:
+    """The smallest k for which k x k blocks of the grid hold the cells in at most ``target`` blocks."""
+    ii = np.asarray(ii, np.int64)
+    jj = np.asarray(jj, np.int64)
+    k = 1
+    while np.unique((ii // k) * 1_000_003 + (jj // k)).size > target:
+        k += 1
+    return k
+
+
+def merge_blocks(
+    cube: np.ndarray,
+    ii: np.ndarray,
+    jj: np.ndarray,
+    weights: np.ndarray,
+    frac: np.ndarray,
+    k: int,
+    min_share: float = 0.5,
+    chunk: int = 60,
+) -> dict:
+    """Merge grid cells into k x k blocks, so a whole big region can be mapped.
+
+    Each block's monthly value is the weighted mean of its cells that have data (weights:
+    area x share of the cell inside the region x land/sea mask, as for the regional mean),
+    and missing when less than ``min_share`` of the block's weight has data that month.
+    Works through the months in chunks, so a global 0.5° cube never needs a second copy.
+    Returns {"cube": (n_months, n_blocks), "bi", "bj", "frac"}: block rows and columns in
+    the coarse grid and the share of each block's cells inside the region.
+    """
+    from scipy import sparse
+
+    ii = np.asarray(ii, np.int64)
+    jj = np.asarray(jj, np.int64)
+    w = np.asarray(weights, float)
+    key = (ii // k) * 1_000_003 + (jj // k)
+    uniq, inv = np.unique(key, return_inverse=True)
+    nb = uniq.size
+    W = sparse.csr_matrix((w, (np.arange(ii.size), inv)), shape=(ii.size, nb))
+    total = np.bincount(inv, weights=w, minlength=nb)
+    n_t = cube.shape[0]
+    out = np.full((n_t, nb), np.nan, np.float32)
+    for t0 in range(0, n_t, chunk):
+        X = np.asarray(cube[t0 : t0 + chunk], float)
+        ok = np.isfinite(X)
+        num = np.asarray((W.T @ np.where(ok, X, 0.0).T).T)
+        den = np.asarray((W.T @ ok.T.astype(float)).T)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            m = num / den
+        m[den < min_share * total[None, :]] = np.nan
+        out[t0 : t0 + chunk] = m
+    return {
+        "cube": out,
+        "bi": uniq // 1_000_003,
+        "bj": uniq % 1_000_003,
+        "frac": np.bincount(inv, weights=np.asarray(frac, float), minlength=nb) / (k * k),
+    }

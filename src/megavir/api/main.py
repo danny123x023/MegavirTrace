@@ -6,6 +6,7 @@
 | GET  /places/presets                       | curated preset regions                          |
 | POST /analysis/trend                       | one region: series, statistics, verdict, map    |
 | POST /analysis/compare                     | two regions and the difference test             |
+| POST /analysis/cells                       | cell map of the area in view, full detail       |
 | POST /analysis/scan, GET /analysis/opposites | every variable for one place; opposite trends |
 | GET  /analysis/month                       | how unusual one month was (exploratory)         |
 | POST /ai/ask, /ai/explain                  | AI scientist (explain takes an analysis id)     |
@@ -205,6 +206,26 @@ def analysis_compare(body: CompareIn):
     req["region_a"], req["region_b"] = _region(body.region_a), _region(body.region_b)
     with connect() as conn:
         return service.run_compare(conn, req)
+
+
+class CellsIn(BaseModel):
+    variable: str = Field(max_length=40)
+    region: RegionIn
+    view: list[float] = Field(min_length=4, max_length=4)
+    mode: str | None = None
+    season: str | None = None
+    start_year: int | None = Field(None, ge=1850, le=2100)
+    end_year: int | None = Field(None, ge=1850, le=2100)
+    lang: str = "en"
+
+
+@app.post("/analysis/cells")
+def analysis_cells(body: CellsIn):
+    """Full detail of the cell map for the area in view (big regions are mapped in blocks)."""
+    req = body.model_dump()
+    req["region"] = _region(body.region)
+    with connect() as conn:
+        return service.run_cells(conn, req)
 
 
 @app.post("/analysis/scan")

@@ -13,6 +13,9 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 - **Explore:** pick a variable and a place (search about 39,000 places, 138 presets, or draw or type a box).
   You get a plain-language verdict, a chart with the trend and its 95% range, the statistics, and a cell map
   showing where inside the region the change is happening. The map switches between a flat 2D map and a 3D globe.
+  Big regions, up to the whole Earth, get a map too: cells are merged into blocks (for example 2° from 0.5°)
+  so the whole region fits, and zooming in loads full detail for the area in view, with the false-discovery
+  test run over the cells shown.
   It is a detailed street map (OpenStreetMap data): zoom in to streets, places and buildings in your own area,
   or use the location button. The trend colours fade as you zoom in and have a strength slider.
 - **Compare:** tests whether two regions' trends really differ, using the trend of their difference series.

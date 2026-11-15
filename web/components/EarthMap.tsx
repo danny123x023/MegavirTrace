@@ -3,7 +3,7 @@
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, LayerSpecification, Map as MLMap, StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CellMap } from "@/lib/api";
+import { apiPost, type CellMap } from "@/lib/api";
 import { fmt, fmtSigned } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { divergingFor, isDark } from "@/lib/palette";
@@ -20,6 +20,8 @@ type Props = {
   onBox?: (bbox: number[]) => void;
   height?: number;
   points?: { lat: number; lon: number; name: string }[];
+  /** the analysis request, to fetch full detail of the area in view when the region's map is merged */
+  detailRequest?: Record<string, unknown> | null;
 };
 
 // The worker is copied to /public by `npm run copy-worker` (bundlers cannot resolve it reliably).
@@ -111,7 +113,7 @@ function compose(base: StyleSpecification | null, strength: number, globe: boole
   return { ...b, sources, layers: [...layers, ...top], projection: { type: globe ? "globe" : "mercator" } };
 }
 
-export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height, points }: Props) {
+export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height, points, detailRequest }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
   const [styleTick, setStyleTick] = useState(0); // counts style loads; sources are refilled after each
@@ -271,9 +273,58 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
       })()
     : 1;
 
+  // ---- big regions: merged blocks for the whole region, full detail for the area in view --------
+  const merged = !!cells && !("skipped" in cells) && (cells.block ?? 1) > 1;
+  const [detail, setDetail] = useState<CellMap | null>(null);
+  const [detailBusy, setDetailBusy] = useState(false);
+  const detailCache = useRef(new Map<string, CellMap>());
+  useEffect(() => { setDetail(null); detailCache.current.clear(); }, [cells]);
+
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !ready || !merged || !detailRequest) return;
+    const regionBox = (JSON.parse(fitKey) as (number[] | null)[]).find(Boolean) ?? [-180, -90, 180, 90];
+    const rw = regionBox[2] > regionBox[0] ? regionBox[2] - regionBox[0] : regionBox[2] + 360 - regionBox[0];
+    const rh = regionBox[3] - regionBox[1];
+    let timer = 0;
+    let ctl: AbortController | null = null;
+    const update = () => {
+      const b = m.getBounds();
+      const w = Math.max(-180, b.getWest()), e = Math.min(180, b.getEast());
+      const s = Math.max(-90, b.getSouth()), n = Math.min(90, b.getNorth());
+      // zoomed out to most of the region: the merged map is the right one
+      if ((e - w) * (n - s) > 0.5 * rw * rh || e <= w) { ctl?.abort(); setDetail(null); setDetailBusy(false); return; }
+      // snap the box outwards, so small moves reuse the same result
+      const step = Math.min(30, Math.max(0.5, 2 ** Math.round(Math.log2(Math.max(e - w, n - s) / 4))));
+      const view = [
+        Math.max(-180, Math.floor(w / step) * step), Math.max(-90, Math.floor(s / step) * step),
+        Math.min(180, Math.ceil(e / step) * step), Math.min(90, Math.ceil(n / step) * step),
+      ];
+      const key = view.join(",");
+      const hit = detailCache.current.get(key);
+      if (hit) { setDetail(hit); return; }
+      ctl?.abort();
+      ctl = new AbortController();
+      setDetailBusy(true);
+      apiPost<CellMap>("/analysis/cells", { ...detailRequest, view }, ctl.signal, false)
+        .then((r) => {
+          detailCache.current.set(key, r);
+          setDetail("skipped" in r ? null : r);
+          setDetailBusy(false);
+        })
+        .catch((err: Error) => { if (err.name !== "AbortError") setDetailBusy(false); });
+    };
+    const onMove = () => { window.clearTimeout(timer); timer = window.setTimeout(update, 450); };
+    m.on("moveend", onMove);
+    return () => { m.off("moveend", onMove); window.clearTimeout(timer); ctl?.abort(); };
+  }, [ready, merged, detailRequest, fitKey]);
+
+  const shown = detail ?? cells; // what the map draws; the colour scale stays the region's
+
   useEffect(() => {
     const src = map.current?.getSource("cells") as GeoJSONSource | undefined;
     if (!src) return;
+    const cells = shown;
     if (!cells || "skipped" in cells) { src.setData(EMPTY); return; }
     const r = ramp();
     const h = cells.res / 2;
@@ -290,7 +341,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
       });
     }
     src.setData({ type: "FeatureCollection", features: feats });
-  }, [cells, styleTick, showRaw, ramp, scaleMax]);
+  }, [shown, styleTick, showRaw, ramp, scaleMax]);
 
   useEffect(() => {
     const m = map.current;
@@ -402,13 +453,25 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
             </span>
             <span>{fmtSigned(scaleMax, 2)} {t("{units} per decade", { units })}</span>
           </div>
+          {merged && (
+            <p className="small map-detail" aria-live="polite" style={{ margin: 0 }}>
+              {detailBusy
+                ? t("Loading full detail for the area in view…")
+                : detail && !("skipped" in detail)
+                  ? t("Full detail for the area in view: {n} cells of {res}°. Zoom out to see the whole region again.", { n: detail.n_cells, res: detail.res })
+                  : t("To fit the whole region, cells are merged into {res}° blocks (the data is {native}°). Zoom in on the map for full detail.", {
+                      res: (cells as Exclude<CellMap, { skipped: string }>).res,
+                      native: (cells as Exclude<CellMap, { skipped: string }>).native_res ?? "",
+                    })}
+            </p>
+          )}
           <p className="small muted" style={{ margin: 0 }}>
             {t("{n} of {m} cells pass the false-discovery test (faded cells do not; q ≤ {q}, tuned for neighbouring cells that move together, Wilks 2016).", {
-              n: (cells as Exclude<CellMap, { skipped: string }>).n_pass,
-              m: (cells as Exclude<CellMap, { skipped: string }>).n_cells,
-              q: (cells as Exclude<CellMap, { skipped: string }>).alpha_fdr,
+              n: (shown as Exclude<CellMap, { skipped: string }>).n_pass,
+              m: (shown as Exclude<CellMap, { skipped: string }>).n_cells,
+              q: (shown as Exclude<CellMap, { skipped: string }>).alpha_fdr,
             })}{" "}
-            {t((cells as Exclude<CellMap, { skipped: string }>).caveat)} {t("Based on {basis}.", { basis: (cells as Exclude<CellMap, { skipped: string }>).basis })}
+            {t((shown as Exclude<CellMap, { skipped: string }>).caveat)} {t("Based on {basis}.", { basis: (shown as Exclude<CellMap, { skipped: string }>).basis })}
           </p>
           <p className="small" aria-live="polite" style={{ margin: 0, minHeight: "1.3em" }}>{hoverInfo}</p>
         </div>

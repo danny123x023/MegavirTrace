@@ -170,6 +170,7 @@ export default function ExploreClient() {
                   drawMode={drawing}
                   onBox={onBox}
                   points={globeSites}
+                  detailRequest={result.request}
                 />
               </Panel>
               <ExplainWithAI id={result.id} />

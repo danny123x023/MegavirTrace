@@ -158,6 +158,13 @@ const ES: Record<string, string> = {
   "Map view": "Vista del mapa",
   "Flat map (2D)": "Mapa plano (2D)",
   "Colour strength": "Intensidad del color",
+  "Loading full detail for the area in view…": "Cargando el detalle completo de la zona visible…",
+  "Full detail for the area in view: {n} cells of {res}°. Zoom out to see the whole region again.":
+    "Detalle completo de la zona visible: {n} celdas de {res}°. Aleja el mapa para volver a ver toda la región.",
+  "To fit the whole region, cells are merged into {res}° blocks (the data is {native}°). Zoom in on the map for full detail.":
+    "Para que quepa toda la región, las celdas se agrupan en bloques de {res}° (los datos son de {native}°). Acerca el mapa para ver todo el detalle.",
+  "Which cells pass depends on the area in view: the false-discovery control runs over the cells shown.":
+    "Qué celdas pasan depende de la zona visible: el control de falsos descubrimientos se aplica a las celdas mostradas.",
   "Detective cases": "Casos de detective",
   "Real events and documented changes, investigated step by step with NASA measurements of specific places. The stories only say what happened in the world and where to look: every number is computed from the stored data.":
     "Sucesos reales y cambios documentados, investigados paso a paso con mediciones de la NASA de lugares concretos. Las historias solo cuentan qué pasó en el mundo y dónde mirar: cada número se calcula a partir de los datos guardados.",

@@ -33,6 +33,8 @@ export type CellMap = {
   res: number; lat: (number | null)[]; lon: (number | null)[]; frac: (number | null)[]; slope_per_decade: (number | null)[];
   p: (number | null)[]; q: (number | null)[]; passes: boolean[]; alpha_fdr: number; n_cells: number; n_pass: number;
   n_raw_significant: number; basis: string; caveat: string;
+  /** big regions: cells merged into block x block groups (res = native_res x block) */
+  native_res?: number; block?: number; scope?: "region" | "view"; view?: number[];
 } | { skipped: string };
 
 export type TrendResult = {
@@ -132,7 +134,8 @@ export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string
   return handle<T>(await fetch(`/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined }));
 }
 
-export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+/** keep = false: no offline copy on the device (large, short-lived results such as map detail) */
+export async function apiPost<T>(path: string, body: unknown, signal?: AbortSignal, keep = true): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
@@ -148,7 +151,7 @@ export async function apiPost<T>(path: string, body: unknown, signal?: AbortSign
     throw err;
   }
   const value = await handle<T>(response);
-  remember(path, body, value);
+  if (keep) remember(path, body, value);
   return value;
 }
 

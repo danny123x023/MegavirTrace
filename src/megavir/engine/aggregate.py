@@ -45,17 +45,23 @@ def region_mean(cube: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, np.n
     cos(latitude), the fraction of each cell inside the region and the variable's land/sea mask.
     """
     w = np.asarray(weights, float).ravel()
-    cube = np.asarray(cube, float)
+    cube = np.asarray(cube)
     cube = cube.reshape(cube.shape[0], -1)
     total = float(w.sum())
     if total <= 0:
         raise ValueError("region has no valid cells for this variable")
-    valid = np.isfinite(cube)
-    wv = np.where(valid, w[None], 0.0)
-    sw = wv.sum(axis=1)
-    vals = np.where(valid, cube, 0.0)
+    n_t = cube.shape[0]
+    num = np.zeros(n_t)
+    sw = np.zeros(n_t)
+    # a few months at a time: the whole Earth at 0.5° is 259,200 cells, too many for full copies
+    step = max(1, 8_000_000 // max(1, cube.shape[1]))
+    for t0 in range(0, n_t, step):
+        block = np.asarray(cube[t0 : t0 + step], float)
+        valid = np.isfinite(block)
+        num[t0 : t0 + step] = np.where(valid, block, 0.0) @ w
+        sw[t0 : t0 + step] = valid @ w
     with np.errstate(invalid="ignore", divide="ignore"):
-        mean = (vals * wv).sum(axis=1) / sw
+        mean = num / sw
     mean[sw == 0] = np.nan
     return mean, sw / total
 
