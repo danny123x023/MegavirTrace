@@ -141,6 +141,17 @@ EFFECT_WORDS = {
 
 LANGUAGES = tuple(TEMPLATES)
 
+UNIT_WORDS_ES = (("/month", "/mes"), ("/year", "/año"), ("/hour", "/hora"), ("/season", "/estación"), ("molecules", "moléculas"))
+
+
+def unit_text(unit: str, lang: str) -> str:
+    """Units in the verdict's language: 'mm/month' is 'mm/mes' in Spanish (symbols stay as they are)."""
+    if lang != "es":
+        return unit
+    for en, es in UNIT_WORDS_ES:
+        unit = unit.replace(en, es)
+    return unit
+
 
 # --------------------------------------------------------------------------------------
 # Number formatting (deterministic, shared with the AI number check)
@@ -207,6 +218,7 @@ def trend_verdict(
     if lang not in TEMPLATES:
         lang = "en"
     t = TEMPLATES[lang]
+    unit = unit_text(unit, lang)
     per_dec = 10.0
     rate = st.sen.slope * per_dec
     lo, hi = st.sen.ci_low * per_dec, st.sen.ci_high * per_dec
@@ -375,6 +387,7 @@ def compare_verdict(
     data_kind: str = "real",
 ) -> dict:
     t = TEMPLATES.get(lang, TEMPLATES["en"])
+    unit = unit_text(unit, lang if lang in TEMPLATES else "en")
     d = cmp["difference"]
     shown = {
         "diff": fmt_num(abs(d["slope_per_decade"]), lang=lang),
@@ -518,7 +531,7 @@ PROJ_SCENARIOS_ES = {"ssp245": "SSP2-4.5 (camino intermedio)", "ssp585": "SSP5-8
 def projection_summary(result: dict, place: str, lang: str = "en") -> list[str]:
     t = PROJ_TEMPLATES.get(lang, PROJ_TEMPLATES["en"])
     out = []
-    unit = result["units"]
+    unit = unit_text(result["units"], lang)
     for sc, s in result["scenarios"].items():
         # the last sample year with values
         k = next((i for i in range(len(result["years"]) - 1, -1, -1) if s["median"][i] is not None), None)

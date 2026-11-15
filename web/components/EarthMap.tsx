@@ -5,7 +5,7 @@ import type { GeoJSONSource, LayerSpecification, Map as MLMap, StyleSpecificatio
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiPost, type CellMap } from "@/lib/api";
 import { fmt, fmtSigned } from "@/lib/format";
-import { useI18n } from "@/lib/i18n";
+import { unitText, useI18n } from "@/lib/i18n";
 import { divergingFor, isDark } from "@/lib/palette";
 
 type Outline = { geometry?: GeoJSON.Geometry | null; bbox?: number[] | null; label?: string };
@@ -136,8 +136,9 @@ function readoutText(c: Cursor, units: string, t: T) {
 
 const PIN = "M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21ZM12 7a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z";
 
-function Readout({ cursor: c, units, hasCells, faded }: { cursor: Cursor; units: string; hasCells: boolean; faded: boolean }) {
-  const { t } = useI18n();
+function Readout({ cursor: c, units: unitsRaw, hasCells, faded }: { cursor: Cursor; units: string; hasCells: boolean; faded: boolean }) {
+  const { t, lang } = useI18n();
+  const units = unitText(unitsRaw, lang);
   return (
     <div className="map-readout" aria-hidden="true">
       <div className="map-readout-pos">
@@ -164,7 +165,7 @@ function Readout({ cursor: c, units, hasCells, faded }: { cursor: Cursor; units:
   );
 }
 
-export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height, points, detailRequest }: Props) {
+export default function EarthMap({ outlines, cells, variable = "", units: unitsRaw = "", dataArea, drawMode, onBox, height, points, detailRequest }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
   const [styleTick, setStyleTick] = useState(0); // counts style loads; sources are refilled after each
@@ -178,7 +179,8 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
   const drawStart = useRef<maplibregl.LngLat | null>(null);
   const live = useRef({ strength: 1, globe: false });
   live.current = { strength, globe };
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const units = unitText(unitsRaw, lang);
   const tNow = useRef(t);
   tNow.current = t;
 

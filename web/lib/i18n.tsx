@@ -5,6 +5,7 @@
 // templates in the requested language, so every analysis request sends `lang`.
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { setNumberLanguage } from "@/lib/format";
 
 export type Lang = "en" | "es";
 export const LANGS: { id: Lang; label: string }[] = [
@@ -324,6 +325,38 @@ const ES: Record<string, string> = {
     "Ningún par de regiones predefinidas tiene tendencias robustas y significativas en direcciones opuestas para esta variable.",
   "{view}: {rising} presets rising, {falling} falling (robust, significant after false-discovery control).":
     "{view}: {rising} regiones subiendo, {falling} bajando (robustas, significativas tras el control de falsos descubrimientos).",
+  "A turning point near {year}: {before} then {after} {units} per decade.": "Un punto de giro hacia {year}: {before} y luego {after} {units} por década.",
+  "Unusual: {label}, {dep} {units} from the trend line ({sd} standard deviations).": "Inusual: {label}, {dep} {units} respecto a la línea de tendencia ({sd} desviaciones estándar).",
+  "Trend line: {v} {units}": "Línea de tendencia: {v} {units}",
+  "Measurements by schools and volunteers in the GLOBE Program, for the same place, shown beside the satellite series as monthly anomalies (each month compared with the same month in other years). Context only: they are not used in the trend tests.": "Mediciones de escuelas y voluntarios del programa GLOBE en el mismo lugar, junto a la serie del satélite como anomalías mensuales (cada mes comparado con el mismo mes de otros años). Solo contexto: no se usan en las pruebas de tendencia.",
+  "No GLOBE observations overlap this record here ({r} records found, {s} sites).": "Ninguna observación GLOBE coincide con este registro aquí ({r} registros encontrados, {s} sitios).",
+  "monthly anomalies, {n} shared months": "anomalías mensuales, {n} meses en común",
+  "{n} readings, {a}–{b}": "{n} lecturas, {a}–{b}",
+  "Monthly anomalies: {a} and {b}": "Anomalías mensuales: {a} y {b}",
+  "Sites ({n})": "Sitios ({n})",
+  "{name} ({lat}°, {lon}°): {n} months": "{name} ({lat}°, {lon}°): {n} meses",
+  "Source: {s}. Sites are marked on the map.": "Fuente: {s}. Los sitios están marcados en el mapa.",
+  "How closely they move together at each lag": "Cuánto se mueven juntas con cada desfase",
+  "correlation r at each lag": "correlación r con cada desfase",
+  "strongest link (lag {k})": "vínculo más fuerte (desfase {k})",
+  "|r| needed after the lag search (±{r})": "|r| necesario tras buscar el desfase (±{r})",
+  "Correlation by lag as a table": "Correlación por desfase en tabla",
+  "Lag (months)": "Desfase (meses)",
+  "p (single lag)": "p (un solo desfase)",
+  "Pairs": "Pares",
+  "Pick a place and two variables. MegavirTrace removes each seasonal cycle and long-term trend, then asks whether the month-to-month ups and downs line up, with a delay of up to {n} months.": "Elija un lugar y dos variables. MegavirTrace quita a cada una su ciclo estacional y su tendencia a largo plazo, y luego pregunta si los altibajos de un mes a otro coinciden, con un desfase de hasta {n} meses.",
+  "Choose a place and two variables": "Elija un lugar y dos variables",
+  "Independent pairs after allowing for memory: about {n} (variance × {v}).": "Pares independientes teniendo en cuenta la memoria: unos {n} (varianza × {v}).",
+  "{a} and {b} — {place}, standardized anomalies": "{a} y {b} — {place}, anomalías estandarizadas",
+  "standard deviations": "desviaciones estándar",
+  "Each series is shown in its own standard deviations (z-scores) after removing its seasonal cycle and trend, so both fit one axis.": "Cada serie se muestra en sus propias desviaciones estándar (puntuaciones z) tras quitarle el ciclo estacional y la tendencia, para que ambas quepan en un eje.",
+  "TEST DATA — not a final result": "DATOS DE PRUEBA — no es un resultado final",
+  "SYNTHETIC DATA — for software testing": "DATOS SINTÉTICOS — para probar el software",
+  "Values": "Valores",
+  "Checked by two different tests corrected for year-to-year memory": "Comprobado con dos pruebas distintas corregidas por la memoria de un año a otro",
+  "Open in MegavirTrace": "Abrir en MegavirTrace",
+  "Embed this card": "Insertar esta tarjeta",
+  "This result is not available ({e}).": "Este resultado no está disponible ({e}).",
   "Region A": "Región A",
   "Region B": "Región B",
   "The trends really differ": "Las tendencias realmente difieren",
@@ -648,6 +681,7 @@ function fill(s: string, vars?: Record<string, string | number>) {
 
 export function LangProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>("en");
+  setNumberLanguage(lang); // before the children render, so every number on the page follows the language
   useEffect(() => {
     const saved = localStorage.getItem("mt-lang");
     const pick = saved === "es" || saved === "en" ? saved : navigator.language?.toLowerCase().startsWith("es") ? "es" : "en";
@@ -665,6 +699,12 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useI18n = () => useContext(I18n);
+
+/** Units in the page's language, as the server writes them in verdicts: "mm/month" is "mm/mes" in Spanish. */
+export function unitText(units: string, lang: Lang): string {
+  if (lang !== "es" || !units) return units;
+  return units.replace("/month", "/mes").replace("/year", "/año").replace("/hour", "/hora").replace("/season", "/estación").replace("molecules", "moléculas");
+}
 
 export const THEME_ES: Record<string, string> = {
   Heat: "Calor",

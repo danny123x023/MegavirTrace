@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, exportUrl, type Provenance, type Stats, type Verdict } from "@/lib/api";
 import { fmt, fmtP, fmtSigned } from "@/lib/format";
-import { useI18n } from "@/lib/i18n";
+import { unitText, useI18n } from "@/lib/i18n";
 import Panel, { FullscreenButton } from "@/components/Panel";
 
 const STATUS: Record<string, { icon: string; label: string }> = {
@@ -65,8 +65,9 @@ function paceTile(stats: Stats, units: string, t: T) {
 
 const pText = (p: number) => `p ${fmtP(p).startsWith("<") ? fmtP(p) : "= " + fmtP(p)}`;
 
-export function StatTiles({ stats, units }: { stats: Stats; units: string }) {
-  const { t } = useI18n();
+export function StatTiles({ stats, units: unitsRaw }: { stats: Stats; units: string }) {
+  const { t, lang } = useI18n();
+  const units = unitText(unitsRaw, lang);
   const pd = stats.per_decade;
   const ny = typeof stats.years_needed === "number" ? stats.years_needed : Infinity;
   const tiles = [
@@ -96,10 +97,10 @@ export function StatTiles({ stats, units }: { stats: Stats; units: string }) {
           <summary>{t("Extra clues (exploratory)")}</summary>
           <ul className="small">
             {stats.turning?.preferred && (
-              <li>A turning point near {Math.floor(stats.turning.at)}: {fmtSigned(stats.turning.slope_before * 10)} then {fmtSigned(stats.turning.slope_after * 10)} {units} per decade.</li>
+              <li>{t("A turning point near {year}: {before} then {after} {units} per decade.", { year: String(Math.floor(stats.turning.at)), before: fmtSigned(stats.turning.slope_before * 10), after: fmtSigned(stats.turning.slope_after * 10), units })}</li>
             )}
             {stats.unusual.map((u) => (
-              <li key={u.label}>Unusual: {u.label}, {fmtSigned(u.departure, 2)} {units} from the trend line ({fmt(u.sd_units, 2)} standard deviations).</li>
+              <li key={u.label}>{t("Unusual: {label}, {dep} {units} from the trend line ({sd} standard deviations).", { label: u.label, dep: fmtSigned(u.departure, 2), units, sd: fmt(u.sd_units, 2) })}</li>
             ))}
           </ul>
         </details>

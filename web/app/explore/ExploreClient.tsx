@@ -155,6 +155,7 @@ export default function ExploreClient() {
               <VerdictCard verdict={result.verdict} dataKind={result.data.kind} provenance={result.provenance} />
               <Panel aria-label="Time series">
                 <TrendChart
+                  decimals={result.variable.decimals}
                   title={`${varText(result.variable, lang)} — ${result.region.name}${s?.season ? ` (${s.season})` : ""}`}
                   labels={s!.labels}
                   t={s!.t}

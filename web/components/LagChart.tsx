@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fmt, fmtP } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import { FullscreenButton, useFullHeight, ViewSwitch } from "./Panel";
 
 // Correlation by lag: one series of columns (slot 1); the strongest link is marked in slot 2 and named
@@ -16,6 +17,7 @@ export default function LagChart({ lags, r, p, n, best, rNeeded, labelA, labelB 
   labelA: string;
   labelB: string;
 }) {
+  const { t } = useI18n();
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(560);
   const [hover, setHover] = useState<number | null>(null);
@@ -41,7 +43,7 @@ export default function LagChart({ lags, r, p, n, best, rNeeded, labelA, labelB 
   return (
     <figure style={{ margin: 0 }}>
       <figcaption className="row" style={{ justifyContent: "space-between" }}>
-        <strong>How closely they move together at each lag</strong>
+        <strong>{t("How closely they move together at each lag")}</strong>
         <span className="row" style={{ gap: 8 }}>
           <FullscreenButton />
           <ViewSwitch table={table} onChange={setTable} />
@@ -49,15 +51,15 @@ export default function LagChart({ lags, r, p, n, best, rNeeded, labelA, labelB 
       </figcaption>
       {!table && (
         <div className="chart-legend" aria-hidden="true">
-          <span className="key"><i style={{ background: "var(--series-1)", height: 10 }} />correlation r at each lag</span>
-          <span className="key"><i style={{ background: "var(--series-2)", height: 10 }} />strongest link (lag {best})</span>
-          {rNeeded !== null && <span className="key"><i style={{ background: "var(--text-secondary)", height: 1 }} />|r| needed after the lag search (±{fmt(rNeeded, 2)})</span>}
+          <span className="key"><i style={{ background: "var(--series-1)", height: 10 }} />{t("correlation r at each lag")}</span>
+          <span className="key"><i style={{ background: "var(--series-2)", height: 10 }} />{t("strongest link (lag {k})", { k: String(best) })}</span>
+          {rNeeded !== null && <span className="key"><i style={{ background: "var(--text-secondary)", height: 1 }} />{t("|r| needed after the lag search (±{r})", { r: fmt(rNeeded, 2) })}</span>}
         </div>
       )}
       {table ? (
-        <div className="table-scroll" tabIndex={0} role="region" aria-label="Correlation by lag as a table">
+        <div className="table-scroll" tabIndex={0} role="region" aria-label={t("Correlation by lag as a table")}>
           <table className="data">
-            <thead><tr><th scope="col">Lag (months)</th><th scope="col">r</th><th scope="col">p (single lag)</th><th scope="col">Pairs</th></tr></thead>
+            <thead><tr><th scope="col">{t("Lag (months)")}</th><th scope="col">r</th><th scope="col">{t("p (single lag)")}</th><th scope="col">{t("Pairs")}</th></tr></thead>
             <tbody>{lags.map((k, i) => <tr key={k}><td>{k}</td><td>{fmt(r[i], 2)}</td><td>{fmtP(p[i])}</td><td>{n[i]}</td></tr>)}</tbody>
           </table>
         </div>

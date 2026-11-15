@@ -267,3 +267,10 @@ def test_years_needed_sentence_adds_up():
     sh = v["shown"]
     if "n_star" in sh:
         assert int(sh["n_star"]) - int(sh["span"]) == int(sh["more"]) > 0
+
+
+def test_spanish_verdicts_use_spanish_unit_words():
+    st, var = _trend(var="rainfall", trend=0.0, noise=1.0)
+    v = trend_verdict(st, var, "Testlandia", "mm/month", lang="es")
+    text = v["headline"] + " ".join(v["sentences"])
+    assert "mm/mes" in text and "mm/month" not in text

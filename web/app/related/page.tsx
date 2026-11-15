@@ -67,10 +67,10 @@ export default function RelatedPage() {
     <div>
       <h1>{tr("Do two things move together?")}</h1>
       <p className="lede">
-        Pick a place and two variables. MegavirTrace removes each seasonal cycle and long-term trend, then asks whether the month-to-month
-        ups and downs line up, with a delay of up to {maxLag} months. <strong>Related is not caused by.</strong>
+        {tr("Pick a place and two variables. MegavirTrace removes each seasonal cycle and long-term trend, then asks whether the month-to-month ups and downs line up, with a delay of up to {n} months.", { n: maxLag })}{" "}
+        <strong>{tr("Related is not caused by.")}</strong>
       </p>
-      <div className="filters" role="search" aria-label="Choose a place and two variables">
+      <div className="filters" role="search" aria-label={tr("Choose a place and two variables")}>
         <PlacePicker label="Where" value={place} onChange={setPlace} />
         <VariablePicker catalog={catalog} value={a} onChange={setA} label="Variable A" />
         <VariablePicker catalog={catalog} value={b} onChange={setB} label="Variable B" />
@@ -82,7 +82,7 @@ export default function RelatedPage() {
         </div>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      {!res && busy && <p className="spinner-note" role="status">Comparing…</p>}
+      {!res && busy && <p className="spinner-note" role="status">{tr("Comparing…")}</p>}
       {res && rel && (
         <div style={{ opacity: busy ? 0.55 : 1 }} aria-busy={busy}>
           <div className="grid-2">
@@ -93,7 +93,7 @@ export default function RelatedPage() {
               {res.verdict.sentences.map((s, i) => <p key={i}>{s}</p>)}
               <ul className="caveats">{res.verdict.caveats.map((c) => <li key={c}>{c}</li>)}</ul>
               <p className="small muted">
-                Independent pairs after allowing for memory: about {Math.round(rel.n_eff)} (variance × {fmt(rel.variance_inflation, 2)}).{" "}
+                {tr("Independent pairs after allowing for memory: about {n} (variance × {v}).", { n: Math.round(rel.n_eff), v: fmt(rel.variance_inflation, 2) })}{" "}
                 <a href={exportUrl(res.id, "csv")} download>CSV</a> · <a href={exportUrl(res.id, "json")} download>JSON</a>
               </p>
             </Panel>
@@ -104,10 +104,10 @@ export default function RelatedPage() {
           </div>
           <Panel style={{ marginTop: 16 }} aria-label="Both series">
             <TrendChart
-              title={`${res.variable_a.name} and ${res.variable_b.name} — ${res.region.name}, standardized anomalies`}
+              title={tr("{a} and {b} — {place}, standardized anomalies", { a: varText(res.variable_a, lang), b: varText(res.variable_b, lang), place: res.region.name })}
               labels={rel.labels}
               t={t}
-              units="standard deviations"
+              units={tr("standard deviations")}
               series={[
                 { key: "a", label: `A: ${res.variable_a.name}`, color: "var(--series-1)", values: rel.a_std, markers: false },
                 { key: "b", label: `B: ${res.variable_b.name}`, color: "var(--series-2)", values: rel.b_std, markers: false },
@@ -115,7 +115,7 @@ export default function RelatedPage() {
               zeroLine
               height={260}
             />
-            <p className="small muted">Each series is shown in its own standard deviations (z-scores) after removing its seasonal cycle and trend, so both fit one axis.</p>
+            <p className="small muted">{tr("Each series is shown in its own standard deviations (z-scores) after removing its seasonal cycle and trend, so both fit one axis.")}</p>
           </Panel>
         </div>
       )}

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmt, fmtSigned, niceTicks, tickLabel } from "@/lib/format";
-import { useI18n } from "@/lib/i18n";
+import { fmt, fmtSigned, niceTicks, tickLabel, fmtValue } from "@/lib/format";
+import { unitText, useI18n } from "@/lib/i18n";
 import { FullscreenButton, useFullHeight, ViewSwitch } from "./Panel";
 
 export type ChartSeries = {
@@ -23,6 +23,7 @@ type Props = {
   trend?: { line: (number | null)[]; slopeLow: number; slopeHigh: number; label: string } | null;
   height?: number;
   zeroLine?: boolean;
+  decimals?: number; // the variable's display precision for values (catalog); default 3 significant digits
   /** points to mark (an event year), drawn as a ring with its label */
   highlight?: number[];
   /** a dashed reference level, e.g. the usual value */
@@ -31,9 +32,11 @@ type Props = {
 
 const PAD = { left: 52, right: 16, top: 12, bottom: 30 };
 
-export default function TrendChart({ title, labels, t, series, units, trend, height: baseHeight = 300, zeroLine, highlight = [], refLine }: Props) {
+export default function TrendChart({ title, labels, t, series, units: unitsRaw, trend, height: baseHeight = 300, zeroLine, highlight = [], refLine, decimals }: Props) {
+  const val = (v: number | null | undefined) => (decimals === undefined ? fmt(v, 3) : fmtValue(v, decimals));
   const height = useFullHeight(baseHeight);
-  const { t: tr } = useI18n();
+  const { t: tr, lang } = useI18n();
+  const units = unitText(unitsRaw, lang);
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState<number | null>(null);
@@ -161,8 +164,8 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
               {idx.map((i) => (
                 <tr key={i} className={highlight.includes(i) ? "row-marked" : undefined}>
                   <td>{labels[i]}{highlight.includes(i) ? ` (${tr("marked")})` : ""}</td>
-                  {series.map((s) => <td key={s.key}>{fmt(s.values[i], 3)}</td>)}
-                  {trend && <td>{fmt(trend.line[i], 3)}</td>}
+                  {series.map((s) => <td key={s.key}>{val(s.values[i])}</td>)}
+                  {trend && <td>{val(trend.line[i])}</td>}
                 </tr>
               ))}
             </tbody>
@@ -243,11 +246,11 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
               <div className="t-label">{labels[hover]}</div>
               {series.map((s) => (
                 <div key={s.key} className="tabular">
-                  <span className="key"><i style={{ background: s.color }} /></span> {s.label}: <strong>{fmt(s.values[hover], 3)}</strong> {units}
+                  <span className="key"><i style={{ background: s.color }} /></span> {s.label}: <strong>{val(s.values[hover])}</strong> {units}
                 </div>
               ))}
               {trend && trend.line[hover] !== null && (
-                <div className="tabular">Trend line: {fmtSigned(trend.line[hover], 3)} {units}</div>
+                <div className="tabular">{tr("Trend line: {v} {units}", { v: fmtSigned(trend.line[hover], 3), units })}</div>
               )}
             </div>
           )}
@@ -255,7 +258,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
       )}
       <p className="visually-hidden" aria-live="polite">
         {hover !== null && !showTable
-          ? `${labels[hover]}: ` + series.map((s) => `${s.label} ${fmt(s.values[hover], 3)} ${units}`).join("; ")
+          ? `${labels[hover]}: ` + series.map((s) => `${s.label} ${val(s.values[hover])} ${units}`).join("; ")
           : ""}
       </p>
     </figure>

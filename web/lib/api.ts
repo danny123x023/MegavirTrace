@@ -10,6 +10,7 @@ export type Variable = {
   name: string;
   theme: string;
   units: string;
+  decimals?: number; // display precision for measured values
   domain: string;
   agg: string;
   definition: string;
