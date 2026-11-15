@@ -990,7 +990,9 @@ VARIABLES: dict[str, Variable] = {
             source_badge="MODIS · Aqua",
             definition="The green pigment of the tiny plants (phytoplankton) floating near the ocean surface, in milligrams per cubic metre: a measure of ocean life.",
             why_it_can_trend="Warmer surface water mixes less and brings up fewer nutrients, which can mean fewer phytoplankton; rivers, upwelling and melting ice can feed more.",
-            caveat="Clouds, sun glint and polar night leave gaps; values differ a hundredfold between open ocean and coasts, and the Aqua satellite is ageing.",
+            caveat="Clouds, sun glint and polar night leave gaps (years then use the months with data). Values differ a "
+            "hundredfold between open ocean and coasts and averages are plain means, so a few blooming coastal areas can "
+            "dominate a region's value and its trend. The Aqua satellite is ageing.",
             rising_words=("seeing more phytoplankton", "seeing less phytoplankton"),
             decimals=3,
         ),

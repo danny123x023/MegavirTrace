@@ -227,7 +227,7 @@ ES: dict[str, dict] = {
         "name": "Clorofila del océano (fitoplancton)",
         "definition": "El pigmento verde de las diminutas plantas (fitoplancton) que flotan cerca de la superficie del océano, en miligramos por metro cúbico: una medida de la vida marina.",
         "why_it_can_trend": "El agua superficial más cálida se mezcla menos y sube menos nutrientes, lo que puede significar menos fitoplancton; los ríos, el afloramiento y el hielo que se derrite pueden alimentar más.",
-        "caveat": "Las nubes, los reflejos del sol y la noche polar dejan huecos; los valores varían cien veces entre el océano abierto y las costas, y el satélite Aqua está envejeciendo.",
+        "caveat": "Las nubes, el brillo del sol y la noche polar dejan huecos (los años usan entonces los meses con datos). Los valores varían cien veces entre mar abierto y costa y las medias son simples, así que unas pocas zonas costeras en floración pueden dominar el valor de una región y su tendencia. El satélite Aqua está envejeciendo.",
         "rising_words": ("a más fitoplancton", "a menos fitoplancton"),
     },
 }

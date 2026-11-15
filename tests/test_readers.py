@@ -376,3 +376,19 @@ def test_a_missing_land_mask_is_resampled_from_a_stored_one():
     g2, coarse = read_land_mask(Conn(), 1.0)
     assert coarse.shape == (180, 360) and coarse[100, 150] == pytest.approx(0.25)
     store._mask_cache.clear()
+
+
+def test_unfinished_months_are_not_stored_and_weekly_grids_are_dated_by_their_centre():
+    from megavir.ingest.pipeline import _midpoint, _months_from_bounds, last_complete_month
+
+    omi = PRODUCTS["omi_no2"]
+    files = [("2026-11-12T00:00:00Z", None, {"end": "2026-11-12T23:59:59Z"})]
+    assert last_complete_month(omi, files) == 2026 * 12 + 9  # October: November is still under way
+    files = [("2026-10-31T00:00:00Z", None, {"end": "2026-10-31T23:59:59Z"})]
+    assert last_complete_month(omi, files) == 2026 * 12 + 9
+    assert last_complete_month(PRODUCTS["merra2_slv"], files) is None  # monthly files: no cut
+    # a NASA-SSH grid for 28 Oct - 7 Nov 1992 is centred on 2 November
+    assert month_abs_from_iso(_midpoint("1992-10-28T00:00:00Z", "1992-11-07T00:00:00Z")) == 1992 * 12 + 10
+    # GRACE-FO: 22 Oct - 9 Nov 2018 has most of its days in October; 10-30 Nov is November
+    b = np.array([["2018-10-22", "2018-11-09"], ["2018-11-10", "2018-11-30"]], dtype="datetime64[D]")
+    assert _months_from_bounds(b) == [2018 * 12 + 9, 2018 * 12 + 10]

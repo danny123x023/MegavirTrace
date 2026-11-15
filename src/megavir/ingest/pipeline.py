@@ -265,10 +265,39 @@ def _opendap_files(
                     "lons": lons[j0 : j1 + 1],
                     "lon_first": lon_axis_first,
                     "t_offset": t_offset,
+                    "end": g.end,
+                    # weekly grids cover a window (NASA-SSH: 10 days): date them by its centre, not its start
+                    "mid": _midpoint(g.begin, g.end) if p.cadence == "weekly" else g.begin,
                 },
             )
         )
     return out
+
+
+def _parse_iso(s: str) -> dt.datetime:
+    return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def _midpoint(begin: str, end: str | None) -> str:
+    if not end:
+        return begin
+    b, e = _parse_iso(begin), _parse_iso(end)
+    return (b + (e - b) / 2).isoformat()
+
+
+def last_complete_month(p: Product, files: list) -> int | None:
+    """For daily and weekly products, the last month the files cover to its end.
+
+    The month still under way (OMI's latest file is a few days old) would otherwise be stored
+    as if complete, built from a few days.  Monthly products return None (no cut).
+    """
+    if p.cadence not in ("daily", "weekly") or p.access != "opendap":
+        return None
+    ends = [info.get("end") for _, _, info in files if isinstance(info, dict) and info.get("end")]
+    if not ends:
+        return None
+    nxt = (max(_parse_iso(e) for e in ends) + dt.timedelta(seconds=1)).date()
+    return nxt.year * 12 + nxt.month - 1 - 1
 
 
 def _granules(p: Product, start: str, end: str, limit: int | None) -> list:
@@ -373,9 +402,12 @@ def _read_public(p: Product, path: Path) -> list[tuple[int, dict, np.ndarray, np
         lons = ds[lonn].values.astype(float)
         out = []
         times = ds["time"].values if "time" in ds.dims else [None]
+        by_bounds = _months_from_bounds(ds["time_bounds"].values) if "time_bounds" in ds.variables else None
         for k, tv in enumerate(times):
             if tv is None:
                 m = _month_from_name(path.name)
+            elif by_bounds is not None:
+                m = by_bounds[k]
             else:
                 ts = np.datetime64(tv, "D").astype(object)
                 m = ts.year * 12 + ts.month - 1
@@ -397,6 +429,36 @@ def _read_public(p: Product, path: Path) -> list[tuple[int, dict, np.ndarray, np
         return out
     finally:
         ds.close()
+
+
+def _months_from_bounds(bounds) -> list[int]:
+    """The month each time step belongs to: the one holding most of its days.
+
+    GRACE-FO's solution for 22 Oct - 9 Nov 2018 has its midpoint on 1 November, so labelling by the
+    midpoint put two solutions in November and none in October.  When two steps still claim the
+    same month, the one with fewer days there moves to its next month if that is free.
+    """
+    def days_by_month(b0, b1) -> dict[int, int]:
+        d0 = np.datetime64(b0, "D").astype(object)
+        d1 = np.datetime64(b1, "D").astype(object)
+        out: dict[int, int] = {}
+        d = d0
+        while d <= d1:
+            m = d.year * 12 + d.month - 1
+            out[m] = out.get(m, 0) + 1
+            d += dt.timedelta(days=1)
+        return out
+
+    counts = [days_by_month(b[0], b[1]) for b in np.asarray(bounds)]
+    months = [max(c, key=lambda m: (c[m], -m)) for c in counts]
+    for k in range(1, len(months)):
+        if months[k] == months[k - 1]:
+            a, b = counts[k - 1], counts[k]
+            if a.get(months[k], 0) < b.get(months[k], 0) and (months[k] - 1) in a and (k < 2 or months[k - 2] != months[k] - 1):
+                months[k - 1] = months[k] - 1
+            elif (months[k] + 1) in b and (k + 1 >= len(months) or months[k + 1] != months[k] + 1):
+                months[k] = months[k] + 1
+    return months
 
 
 def _month_from_name(name: str) -> int:
@@ -514,7 +576,7 @@ def _run(product_id: str, mode: str, conn, raw: Path, limit: int | None, activat
                         yield m0 + k, fields, la, lo
                     continue
                 fields, la, lo = standard_fields(path, p, info["lats"], info["lons"], info["lon_first"])
-                yield month_abs_from_iso(begin), fields, la, lo
+                yield month_abs_from_iso(info.get("mid") or begin), fields, la, lo
         elif p.access == "download":
             for begin, path in files:
                 yield from p.reader(path, begin)
@@ -550,6 +612,14 @@ def _run(product_id: str, mode: str, conn, raw: Path, limit: int | None, activat
             _progress(stage="stored", variable=v, action="no_data")
             continue
         m0, cube = got
+        last_full = last_complete_month(p, files)
+        if last_full is not None and m0 + cube.shape[0] - 1 > last_full:
+            keep = max(0, last_full - m0 + 1)
+            report.notes[f"{v}_cut"] = f"{cube.shape[0] - keep} unfinished month(s) left out"
+            cube = cube[:keep]
+            if keep == 0:
+                report.no_data.append(v)
+                continue
         dom = p.domain_mask.get(v)
         if dom and land is not None:  # e.g. AIRS skin temperature split into ground and sea
             cube[:, (land < 0.5) if dom == "land" else (land >= 0.5)] = np.nan
