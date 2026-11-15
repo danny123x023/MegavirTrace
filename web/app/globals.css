@@ -341,6 +341,12 @@ table.data tbody tr:hover { background: var(--surface-2); }
 }
 .map-box .maplibregl-canvas:focus-visible { outline: 2px solid var(--focus); }
 .map-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 12px; }
+.map-range { gap: 8px; color: var(--text-secondary); }
+.map-range input[type="range"] { width: 110px; accent-color: var(--accent-fill); margin: 0; }
+.map-hint { margin: 6px 0 0; }
+/* map controls: links in the credits are underlined (not told apart by colour alone) */
+.map-box .maplibregl-ctrl-attrib a { text-decoration: underline; }
+.map-box .maplibregl-ctrl-scale { font-size: 11px; }
 .legend-ramp { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--text-secondary); flex-wrap: wrap; margin-top: 10px; }
 .legend-ramp .swatches { display: flex; border-radius: 4px; overflow: hidden; }
 .legend-ramp .swatches span { width: 22px; height: 10px; }

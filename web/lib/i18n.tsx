@@ -157,6 +157,12 @@ const ES: Record<string, string> = {
   // map
   "Map view": "Vista del mapa",
   "Flat map (2D)": "Mapa plano (2D)",
+  "Colour strength": "Intensidad del color",
+  "Zoom in": "Acercar",
+  "Zoom out": "Alejar",
+  "Show my location": "Mostrar mi ubicación",
+  "Zoom in to see streets, places and buildings, or use the location button to go to where you are.":
+    "Acerca el mapa para ver calles, lugares y edificios, o usa el botón de ubicación para ir a donde estás.",
   "Globe (3D)": "Globo (3D)",
   "Show raw view (no false-discovery fading)": "Ver sin filtrar (sin atenuar los falsos descubrimientos)",
   "Colour scale": "Escala de colores",

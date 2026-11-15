@@ -10,6 +10,7 @@
 | GET  /analysis/month                       | how unusual one month was (exploratory)         |
 | POST /ai/ask, /ai/explain                  | AI scientist (explain takes an analysis id)     |
 | GET  /reports/{id}, /reports/{id}/export   | saved results; CSV, Excel, PDF, notebook        |
+| GET  /basemap/style/{theme}, /basemap/...  | detailed street map (OpenStreetMap), relayed    |
 | GET  /v1/...  (public: /api/v1/...)        | documented, read-only, rate-limited data API    |
 """
 
@@ -30,6 +31,7 @@ from megavir.store import connect
 
 from . import service
 from .admin_routes import router as admin_router
+from .basemap import router as basemap_router
 from .security import OriginAndHeaders
 
 app = FastAPI(
@@ -42,6 +44,7 @@ app = FastAPI(
 )
 app.add_middleware(OriginAndHeaders)
 app.include_router(admin_router)  # import dashboard (/admin/*)
+app.include_router(basemap_router)  # detailed base map, relayed and kept (/basemap/*)
 
 
 @app.exception_handler(service.AnalysisError)

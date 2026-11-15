@@ -13,6 +13,8 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 - **Explore:** pick a variable and a place (search about 39,000 places, 138 presets, or draw or type a box).
   You get a plain-language verdict, a chart with the trend and its 95% range, the statistics, and a cell map
   showing where inside the region the change is happening. The map switches between a flat 2D map and a 3D globe.
+  It is a detailed street map (OpenStreetMap data): zoom in to streets, places and buildings in your own area,
+  or use the location button. The trend colours fade as you zoom in and have a strength slider.
 - **Compare:** tests whether two regions' trends really differ, using the trend of their difference series.
   It also finds pairs of preset regions with opposite trends.
 - **Moves together:** do two variables rise and fall together in one place, possibly with a delay? Seasonal
@@ -120,6 +122,17 @@ $I admin-token   # MEGAVIR_ADMIN_TOKEN from .env, or a random one kept in data/a
 
 An import of a product never runs twice at once: the dashboard and the command line share a per-product lock.
 
+### The street map
+
+The map under the trend colours is [OpenFreeMap](https://openfreemap.org): free vector tiles of
+OpenStreetMap data, with no key. Browsers never contact it. The API relays the style, tiles, fonts and icons
+from `/api/basemap/*`, keeps a copy in `data/basemap/` (capped by `MEGAVIR_BASEMAP_CACHE_MB`, default 2 GB),
+and limits each visitor to `MEGAVIR_BASEMAP_PER_MINUTE_PER_IP` requests. So visitors' addresses stay with
+you, the page keeps `connect-src 'self'`, and an area viewed once loads from your server afterwards. The
+service worker keeps the last 2,000 map files, so places you looked at work offline. To use your own tile
+server, set `MEGAVIR_BASEMAP_URL` (and the `_STYLE_LIGHT` and `_STYLE_DARK` names). An empty URL turns the
+street map off. The map then shows the built-in country outlines, as it also does when the tiles cannot load.
+
 ### The AI scientist (optional, off by default)
 
 Set it up in `.env`, never in the browser:
@@ -196,4 +209,6 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 
 Data: NASA (GES DISC, LP DAAC, PO.DAAC, GISS, GSFC, NCCS) the NASA [GLOBE Program](https://www.globe.gov) and NASA NEX-GDDP-CMIP6 (via NCCS). Each product is cited with its DOI in the app and
 the exports. Place names: [GeoNames](https://www.geonames.org) (CC BY 4.0). Outlines and land:
-[Natural Earth](https://www.naturalearthdata.com) (public domain). Code: Apache 2.0 (see `LICENSE`).
+[Natural Earth](https://www.naturalearthdata.com) (public domain). Street map: © [OpenStreetMap
+contributors](https://www.openstreetmap.org/copyright) (ODbL), tiles by [OpenFreeMap](https://openfreemap.org),
+© [OpenMapTiles](https://www.openmaptiles.org). Code: Apache 2.0 (see `LICENSE`).

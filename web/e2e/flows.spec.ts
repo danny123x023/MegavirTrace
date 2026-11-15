@@ -180,3 +180,29 @@ test("every result card can go full screen and back", async ({ page }) => {
   await chart.getByRole("button", { name: "Exit full screen" }).click();
   await expect(chart).not.toHaveClass(/is-full/);
 });
+
+test.describe("map base layers", () => {
+  // the service worker would answer the map requests itself, out of reach of page.route
+  test.use({ serviceWorkers: "block" });
+  test("map: street map with location and scale; country outlines when it cannot load", async ({ page }) => {
+    // a stand-in street-map style (the real one is relayed from OpenStreetMap tiles by the API)
+    await page.route("**/api/basemap/style/*", (route) =>
+      route.fulfill({ json: { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#f2efe9" } }] } }),
+    );
+    await page.goto("/?v=temp_change&place=admin1%3AUS-TX&label=Texas");
+    await expect(page.locator(".verdict h2")).toBeVisible();
+    const map = page.locator("section[aria-label='Where inside the region']");
+    await expect(map.getByText(/Zoom in to see streets, places and buildings/)).toBeVisible();
+    await expect(map.getByRole("button", { name: "Show my location" })).toBeVisible();
+    await expect(map.locator(".maplibregl-ctrl-scale")).toBeVisible();
+    await expect(map.getByLabel("Colour strength")).toBeVisible();
+
+    const outlines = await page.context().newPage();
+    await outlines.route("**/api/basemap/**", (route) => route.abort());
+    await outlines.goto("/?v=temp_change&place=admin1%3AUS-TX&label=Texas");
+    await expect(outlines.locator(".verdict h2")).toBeVisible();
+    const map2 = outlines.locator("section[aria-label='Where inside the region']");
+    await expect(map2.locator(".maplibregl-ctrl-attrib")).toContainText("Natural Earth");
+    await expect(map2.getByText(/Zoom in to see streets/)).toHaveCount(0);
+  });
+});

@@ -1,7 +1,7 @@
 "use client";
 
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MLMap } from "maplibre-gl";
+import type { GeoJSONSource, LayerSpecification, Map as MLMap, StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CellMap } from "@/lib/api";
 import { fmt, fmtSigned } from "@/lib/format";
@@ -41,116 +41,226 @@ function reducedMotion(): boolean {
   return typeof window !== "undefined" && (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
 }
 
+// ---- base map --------------------------------------------------------------------------------
+// The detailed street map (OpenStreetMap data: roads, places, parks, buildings) comes through our
+// API, which relays and keeps the files (src/megavir/api/basemap.py).  Without it (offline, or
+// turned off on the server) the map falls back to the built-in country outlines.
+
+type Theme = "light" | "dark";
+const baseStyles = new Map<Theme, Promise<StyleSpecification | null>>();
+let detailedBroken = false; // tiles failed this visit: stay with the outlines
+
+function loadBase(theme: Theme): Promise<StyleSpecification | null> {
+  if (detailedBroken || (typeof navigator !== "undefined" && navigator.onLine === false)) return Promise.resolve(null);
+  let style = baseStyles.get(theme);
+  if (!style) {
+    const ctl = new AbortController();
+    const timer = window.setTimeout(() => ctl.abort(), 5000);
+    style = fetch(`/api/basemap/style/${theme}`, { signal: ctl.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<StyleSpecification>) : null))
+      .catch(() => null)
+      .finally(() => window.clearTimeout(timer));
+    style.then((st) => { if (!st) baseStyles.delete(theme); });
+    baseStyles.set(theme, style);
+  }
+  return style;
+}
+
+function outlineBase(): StyleSpecification {
+  return {
+    version: 8,
+    sources: { world: { type: "geojson", data: "/world.json", attribution: "Outlines: Natural Earth" } },
+    layers: [
+      { id: "sea", type: "background", paint: { "background-color": cssVar("--sea") } },
+      { id: "land", type: "fill", source: "world", paint: { "fill-color": cssVar("--land") } },
+      { id: "borders", type: "line", source: "world", paint: { "line-color": cssVar("--text-secondary"), "line-width": 0.5, "line-opacity": 0.6 } },
+    ],
+  };
+}
+
+const OVERLAY = ["region", "cells", "area", "draft", "points"];
+// roads, buildings, borders and names stay readable on top of the trend colours
+const ON_TOP = new Set(["transportation", "transportation_name", "building", "boundary", "aeroway"]);
+
+/** Trend colours fade as you zoom in, so streets and names show through. */
+function cellOpacity(strength: number): maplibregl.DataDrivenPropertyValueSpecification<number> {
+  const at = (zoom: number, k: number) => [zoom, ["*", strength * k, ["get", "opacity"]]];
+  return ["interpolate", ["linear"], ["zoom"], ...at(4, 1), ...at(10, 0.6), ...at(14, 0.35)] as maplibregl.DataDrivenPropertyValueSpecification<number>;
+}
+
+function compose(base: StyleSpecification | null, strength: number, globe: boolean): StyleSpecification {
+  const b = base ?? outlineBase();
+  const layers = [...b.layers];
+  let at = layers.findIndex((l) => l.type === "symbol" || l.id === "borders" || ON_TOP.has((l as { "source-layer"?: string })["source-layer"] ?? ""));
+  if (at < 0) at = layers.length;
+  layers.splice(at, 0, {
+    id: "cells", type: "fill", source: "cells",
+    paint: { "fill-color": ["get", "color"], "fill-opacity": cellOpacity(strength), "fill-antialias": false },
+  });
+  const top: LayerSpecification[] = [
+    { id: "area", type: "line", source: "area", paint: { "line-color": cssVar("--text-secondary"), "line-width": 1.5, "line-dasharray": [2, 2] } },
+    { id: "region-line", type: "line", source: "region", paint: { "line-color": cssVar("--text-primary"), "line-width": 2 } },
+    { id: "draft", type: "line", source: "draft", paint: { "line-color": cssVar("--series-2"), "line-width": 2 } },
+    {
+      id: "points", type: "circle", source: "points",
+      paint: { "circle-radius": 5, "circle-color": cssVar("--series-2"), "circle-stroke-color": cssVar("--surface-1"), "circle-stroke-width": 2 },
+    },
+  ];
+  const sources = { ...b.sources };
+  for (const id of OVERLAY) sources[id] = { type: "geojson", data: EMPTY };
+  return { ...b, sources, layers: [...layers, ...top], projection: { type: globe ? "globe" : "mercator" } };
+}
+
 export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height, points }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
-  const [ready, setReady] = useState(false);
+  const [styleTick, setStyleTick] = useState(0); // counts style loads; sources are refilled after each
+  const ready = styleTick > 0;
   const [globe, setGlobe] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [strength, setStrength] = useState(1);
   const [hoverInfo, setHoverInfo] = useState<string>("");
   const [themeTick, setThemeTick] = useState(0);
+  const [detailed, setDetailed] = useState(false); // street map shown (not just the outlines)
   const drawStart = useRef<maplibregl.LngLat | null>(null);
+  const live = useRef({ strength: 1, globe: false });
+  live.current = { strength, globe };
   const { t } = useI18n();
+  const tNow = useRef(t);
+  tNow.current = t;
 
-  // ---- create the map once --------------------------------------------------------------
+  // ---- create the map once (with the detailed base map when it can be had) ------------------
   useEffect(() => {
-    if (!box.current || map.current) return;
-    const m = new maplibregl.Map({
-      container: box.current,
-      style: {
-        version: 8,
-        sources: {
-          world: { type: "geojson", data: "/world.json" },
-          region: { type: "geojson", data: EMPTY },
-          cells: { type: "geojson", data: EMPTY },
-          area: { type: "geojson", data: EMPTY },
-          draft: { type: "geojson", data: EMPTY },
-          points: { type: "geojson", data: EMPTY },
+    let gone = false;
+    let undo = () => {};
+    const theme: Theme = isDark() ? "dark" : "light";
+    loadBase(theme).then((base) => {
+      if (gone || !box.current || map.current) return;
+      const m = new maplibregl.Map({
+        container: box.current,
+        style: compose(base, live.current.strength, live.current.globe),
+        center: [0, 20],
+        zoom: 0,
+        minZoom: -2,
+        maxZoom: 19,
+        attributionControl: false,
+        renderWorldCopies: false,
+        // the style names files as /api/basemap/...; the tile worker needs whole addresses
+        transformRequest: (url) => ({ url: url.startsWith("/") ? window.location.origin + url : url }),
+        locale: {
+          "NavigationControl.ZoomIn": tNow.current("Zoom in"),
+          "NavigationControl.ZoomOut": tNow.current("Zoom out"),
+          "GeolocateControl.FindMyLocation": tNow.current("Show my location"),
         },
-        layers: [
-          { id: "sea", type: "background", paint: { "background-color": cssVar("--sea") } },
-          { id: "land", type: "fill", source: "world", paint: { "fill-color": cssVar("--land") } },
-          { id: "cells", type: "fill", source: "cells", paint: { "fill-color": ["get", "color"], "fill-opacity": ["get", "opacity"], "fill-antialias": false } },
-          { id: "borders", type: "line", source: "world", paint: { "line-color": cssVar("--text-secondary"), "line-width": 0.5, "line-opacity": 0.6 } },
-          { id: "area", type: "line", source: "area", paint: { "line-color": cssVar("--text-secondary"), "line-width": 1.5, "line-dasharray": [2, 2] } },
-          { id: "region-line", type: "line", source: "region", paint: { "line-color": cssVar("--text-primary"), "line-width": 2 } },
-          { id: "draft", type: "line", source: "draft", paint: { "line-color": cssVar("--series-2"), "line-width": 2 } },
-          {
-            id: "points", type: "circle", source: "points",
-            paint: { "circle-radius": 5, "circle-color": cssVar("--series-2"), "circle-stroke-color": cssVar("--surface-1"), "circle-stroke-width": 2 },
-          },
-        ],
-      },
-      center: [0, 20],
-      zoom: 0,
-      minZoom: -2,
-      attributionControl: false,
-      renderWorldCopies: false,
+      });
+      m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      m.addControl(
+        new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: false, timeout: 10000 }, fitBoundsOptions: { maxZoom: 14 } }),
+        "top-right",
+      );
+      m.addControl(new maplibregl.ScaleControl({ maxWidth: 110, unit: "metric" }), "bottom-left");
+      m.addControl(new maplibregl.AttributionControl());
+      m.getCanvas().setAttribute("aria-label", "Map. Drag or use the arrow keys to move, plus and minus to zoom.");
+      m.on("style.load", () => {
+        setDetailed(!m.getSource("world"));
+        setStyleTick((x) => x + 1);
+      });
+
+      // if the street map's tiles cannot be had, go back to the outlines rather than a blank map
+      let tilesOk = false;
+      let failures = 0;
+      m.on("data", (e) => {
+        if (e.dataType === "source" && "tile" in e && e.tile && !OVERLAY.includes((e as { sourceId?: string }).sourceId ?? "")) tilesOk = true;
+      });
+      m.on("error", (e) => {
+        const id = (e as { sourceId?: string }).sourceId;
+        if (!id || OVERLAY.includes(id) || id === "world" || tilesOk) return;
+        failures += 1;
+        if (failures >= 3 || !(e as { tile?: unknown }).tile) { // 3 tiles, or the tile index itself
+          detailedBroken = true;
+          tilesOk = true; // switch once
+          m.setStyle(compose(null, live.current.strength, live.current.globe), { diff: false });
+        }
+      });
+
+      map.current = m;
+      const onTheme = () => setThemeTick((x) => x + 1);
+      window.addEventListener("mt-theme", onTheme);
+      const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+      mq?.addEventListener?.("change", onTheme);
+      undo = () => {
+        window.removeEventListener("mt-theme", onTheme);
+        mq?.removeEventListener?.("change", onTheme);
+        m.remove();
+        map.current = null;
+      };
     });
-    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    m.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "Outlines: Natural Earth" }));
-    m.getCanvas().setAttribute("aria-label", "Map. Drag or use the arrow keys to move, plus and minus to zoom.");
-    m.on("load", () => setReady(true));
-    map.current = m;
-    const onTheme = () => setThemeTick((x) => x + 1);
-    window.addEventListener("mt-theme", onTheme);
-    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    mq?.addEventListener?.("change", onTheme);
-    return () => {
-      window.removeEventListener("mt-theme", onTheme);
-      mq?.removeEventListener?.("change", onTheme);
-      m.remove();
-      map.current = null;
-    };
+    return () => { gone = true; undo(); };
   }, []);
 
   useEffect(() => {
-    map.current?.getCanvas().setAttribute("aria-label", t("Map. Drag or use the arrow keys to move, plus and minus to zoom."));
-  }, [t, ready]);
-
-  // ---- theme colours -------------------------------------------------------------------
-  useEffect(() => {
     const m = map.current;
     if (!m || !ready) return;
-    m.setPaintProperty("sea", "background-color", cssVar("--sea"));
-    m.setPaintProperty("land", "fill-color", cssVar("--land"));
-    m.setPaintProperty("borders", "line-color", cssVar("--text-secondary"));
-    m.setPaintProperty("region-line", "line-color", cssVar("--text-primary"));
-    m.setPaintProperty("area", "line-color", cssVar("--text-secondary"));
-  }, [ready, themeTick]);
+    m.getCanvas().setAttribute("aria-label", t("Map. Drag or use the arrow keys to move, plus and minus to zoom."));
+    const label = (sel: string, text: string) => {
+      const b = box.current?.querySelector<HTMLButtonElement>(sel);
+      if (b && !b.disabled) { b.title = text; b.setAttribute("aria-label", text); }
+    };
+    label(".maplibregl-ctrl-zoom-in", t("Zoom in"));
+    label(".maplibregl-ctrl-zoom-out", t("Zoom out"));
+    label(".maplibregl-ctrl-geolocate", t("Show my location"));
+  }, [t, ready]);
+
+  // ---- light or dark page: the matching base map, same view --------------------------------------
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !themeTick) return;
+    let gone = false;
+    loadBase(isDark() ? "dark" : "light").then((base) => {
+      if (gone || map.current !== m) return;
+      m.setStyle(compose(base, live.current.strength, live.current.globe), { diff: false });
+    });
+    return () => { gone = true; };
+  }, [themeTick]);
 
   // ---- outlines and the data area ---------------------------------------------------------
   useEffect(() => {
     const m = map.current;
-    if (!m || !ready) return;
+    const region = m?.getSource("region") as GeoJSONSource | undefined;
+    const area = m?.getSource("area") as GeoJSONSource | undefined;
+    if (!region || !area) return;
     const feats: GeoJSON.Feature[] = outlines
       .map((o) => (o.geometry ? o.geometry : o.bbox ? bboxPolygon(o.bbox) : null))
       .filter(Boolean)
       .map((g) => ({ type: "Feature", properties: {}, geometry: g as GeoJSON.Geometry }));
-    (m.getSource("region") as GeoJSONSource).setData({ type: "FeatureCollection", features: feats });
-    (m.getSource("area") as GeoJSONSource).setData(
-      dataArea ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: bboxPolygon(dataArea) }] } : EMPTY,
-    );
-    const bbs = outlines.map((o) => o.bbox).filter(Boolean) as number[][];
-    if (bbs.length) {
-      let w = Math.min(...bbs.map((b) => b[0])), s = Math.min(...bbs.map((b) => b[1]));
-      let e = Math.max(...bbs.map((b) => (b[2] < b[0] ? b[2] + 360 : b[2]))), n = Math.max(...bbs.map((b) => b[3]));
-      if (e - w > 300) { w = -180; e = 180; }
-      s = Math.max(s, -85); n = Math.min(n, 85);
-      m.resize();
-      m.fitBounds([[w, s], [e, n]], { padding: 30, duration: reducedMotion() ? 0 : 600, maxZoom: 7 });
-    }
-  }, [outlines, dataArea, ready]);
+    region.setData({ type: "FeatureCollection", features: feats });
+    area.setData(dataArea ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: bboxPolygon(dataArea) }] } : EMPTY);
+  }, [outlines, dataArea, styleTick]);
 
-  // ---- points (GLOBE sites) ----------------------------------------------------------------
+  // a new region moves the view (a new base map, colour change or re-render does not)
+  const fitKey = JSON.stringify(outlines.map((o) => o.bbox ?? null));
   useEffect(() => {
     const m = map.current;
     if (!m || !ready) return;
-    (m.getSource("points") as GeoJSONSource).setData({
+    const bbs = (JSON.parse(fitKey) as (number[] | null)[]).filter(Boolean) as number[][];
+    if (!bbs.length) return;
+    let w = Math.min(...bbs.map((b) => b[0])), s = Math.min(...bbs.map((b) => b[1]));
+    let e = Math.max(...bbs.map((b) => (b[2] < b[0] ? b[2] + 360 : b[2]))), n = Math.max(...bbs.map((b) => b[3]));
+    if (e - w > 300) { w = -180; e = 180; }
+    s = Math.max(s, -85); n = Math.min(n, 85);
+    m.resize();
+    m.fitBounds([[w, s], [e, n]], { padding: 30, duration: reducedMotion() ? 0 : 600, maxZoom: 10 });
+  }, [fitKey, ready]);
+
+  // ---- points (GLOBE sites) ----------------------------------------------------------------
+  useEffect(() => {
+    const src = map.current?.getSource("points") as GeoJSONSource | undefined;
+    if (!src) return;
+    src.setData({
       type: "FeatureCollection",
       features: (points ?? []).map((pt) => ({ type: "Feature", properties: { name: pt.name }, geometry: { type: "Point", coordinates: [pt.lon, pt.lat] } })),
     });
-  }, [points, ready]);
+  }, [points, styleTick]);
 
   // ---- cells -------------------------------------------------------------------------------
   const ramp = useCallback(() => divergingFor(variable, isDark()), [variable]);
@@ -162,9 +272,8 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
     : 1;
 
   useEffect(() => {
-    const m = map.current;
-    if (!m || !ready) return;
-    const src = m.getSource("cells") as GeoJSONSource;
+    const src = map.current?.getSource("cells") as GeoJSONSource | undefined;
+    if (!src) return;
     if (!cells || "skipped" in cells) { src.setData(EMPTY); return; }
     const r = ramp();
     const h = cells.res / 2;
@@ -181,7 +290,12 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
       });
     }
     src.setData({ type: "FeatureCollection", features: feats });
-  }, [cells, ready, showRaw, ramp, scaleMax, themeTick]);
+  }, [cells, styleTick, showRaw, ramp, scaleMax]);
+
+  useEffect(() => {
+    const m = map.current;
+    if (m?.getLayer("cells")) m.setPaintProperty("cells", "fill-opacity", cellOpacity(strength));
+  }, [strength, styleTick]);
 
   // ---- cell hover ------------------------------------------------------------------------------
   useEffect(() => {
@@ -206,7 +320,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
     if (!m || !ready) return;
     if (!drawMode) {
       m.dragPan.enable();
-      (m.getSource("draft") as GeoJSONSource).setData(EMPTY);
+      (m.getSource("draft") as GeoJSONSource | undefined)?.setData(EMPTY);
       return;
     }
     m.dragPan.disable();
@@ -217,7 +331,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
     const down = (e: maplibregl.MapMouseEvent) => { drawStart.current = e.lngLat; };
     const move = (e: maplibregl.MapMouseEvent) => {
       if (!drawStart.current) return;
-      (m.getSource("draft") as GeoJSONSource).setData({ type: "Feature", properties: {}, geometry: bboxPolygon(toBox(drawStart.current, e.lngLat)) });
+      (m.getSource("draft") as GeoJSONSource | undefined)?.setData({ type: "Feature", properties: {}, geometry: bboxPolygon(toBox(drawStart.current, e.lngLat)) });
     };
     const up = (e: maplibregl.MapMouseEvent) => {
       if (!drawStart.current) return;
@@ -260,6 +374,16 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
           <button type="button" aria-pressed={globe} onClick={() => !globe && toggleProjection()}>{t("Globe (3D)")}</button>
         </div>
         {hasCells && (
+          <label className="row small map-range">
+            {t("Colour strength")}
+            <input
+              type="range" min={0.2} max={1} step={0.1} value={strength}
+              aria-valuetext={`${Math.round(strength * 100)}%`}
+              onChange={(e) => setStrength(Number(e.target.value))}
+            />
+          </label>
+        )}
+        {hasCells && (
           <label className="row small">
             <input type="checkbox" checked={showRaw} onChange={(e) => setShowRaw(e.target.checked)} />
             {t("Show raw view (no false-discovery fading)")}
@@ -291,6 +415,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
       )}
       {cells && "skipped" in cells && <p className="small muted">{t("Cell map:")} {cells.skipped}.</p>}
       {dataArea && <p className="small muted" style={{ margin: "4px 0 0" }}>{t("Dashed box: the only area this variable has data for so far.")}</p>}
+      {detailed && <p className="small muted map-hint">{t("Zoom in to see streets, places and buildings, or use the location button to go to where you are.")}</p>}
     </div>
   );
 }
