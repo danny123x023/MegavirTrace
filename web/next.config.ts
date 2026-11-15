@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   agentRules: false,
   allowedDevOrigins: ["127.0.0.1"],
+  // AI answers can take several tool rounds; the default proxy limit (30 s) would cut them off
+  experimental: { proxyTimeout: 120_000 },
   async rewrites() {
     const api = [{ source: "/api/:path*", destination: `${BACKEND}/:path*` }];
     if (process.env.NODE_ENV !== "development") return api;

@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     ai_daily_cap: int = 500
     ai_max_tokens: int = 1200
     ai_timeout_s: float = 45.0
+    # Z.ai GLM 5.x "thinks" by default: minutes per answer. Off keeps answers within seconds.
+    ai_thinking: bool = False
 
     # API rate limits for the open data API (FR17) and analysis endpoints
     analysis_per_minute_per_ip: int = 60

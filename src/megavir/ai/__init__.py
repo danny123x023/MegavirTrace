@@ -443,6 +443,8 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
                 "tool_choice": "auto",
                 "max_tokens": settings().ai_max_tokens,
             }
+            if p == "zai":  # GLM's step-by-step "thinking" is slow and eats the token budget
+                body["thinking"] = {"type": "enabled" if settings().ai_thinking else "disabled"}
             try:
                 r = client.post(url, headers=headers, json=body)
             except httpx.HTTPError as e:
@@ -480,6 +482,11 @@ def _openai_loop(messages: list[dict], system: str, ctx: dict) -> tuple[dict, in
                 parsed = json.loads(text[text.find("{") : text.rfind("}") + 1])
             except (json.JSONDecodeError, ValueError) as e:
                 raise ProviderError("the answer was not valid JSON") from e
+            # some models (GLM) give the explanation as a list of paragraphs
+            if isinstance(parsed.get("explanation"), list) and all(
+                isinstance(x, str) for x in parsed["explanation"]
+            ):
+                parsed["explanation"] = "\n\n".join(parsed["explanation"])
             for k in ("headline", "explanation"):
                 if not isinstance(parsed.get(k), str):
                     raise ProviderError("the answer is missing fields")
