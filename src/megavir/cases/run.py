@@ -298,6 +298,13 @@ def _highlight_text(
     return " ".join(out)
 
 
+def _per_year(per_decade):
+    """A stored per-decade rate as a rate per year; an unbounded range end is stored as "inf"/"-inf"."""
+    if isinstance(per_decade, str):
+        return per_decade  # "inf" or "-inf": the chart draws no band on that side
+    return None if per_decade is None else per_decade / 10
+
+
 def run_trend_step(conn, step: Step, lang: str) -> dict:
     r = service.run_trend(
         conn,
@@ -337,7 +344,7 @@ def run_trend_step(conn, step: Step, lang: str) -> dict:
             "labels": labels,
             "t": s["t"],
             "series": [{"key": "value", "values": s["plot_values"]}],
-            "trend": {"line": s["trend_line"], "low": pd["sen_low"] / 10, "high": pd["sen_high"] / 10},
+            "trend": {"line": s["trend_line"], "low": _per_year(pd["sen_low"]), "high": _per_year(pd["sen_high"])},
             "highlight": [labels.index(h) for h in step.highlight if h in labels],
             "units": r["units"],
             "per_decade_label": f"{fmt_signed(pd['sen'], 2, lang=lang)} {r['units']}",

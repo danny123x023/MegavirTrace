@@ -127,3 +127,10 @@ def test_a_year_still_under_way_is_named_as_such():
     assert partial_year_note(["2024", "2025", "2026"], "2026-10", "annual", "es") == ("2026", " (hasta octubre)")
     assert partial_year_note(["2024", "2025"], "2025-12", "annual", "en") == (None, "")
     assert partial_year_note(["2025 JJA"], "2026-10", "season", "en") == (None, "")
+
+
+def test_an_unbounded_95_percent_range_does_not_break_a_case_chart():
+    from megavir.cases.run import _per_year
+
+    assert _per_year(-0.5) == -0.05 and _per_year("-inf") == "-inf" and _per_year("inf") == "inf"
+    assert _per_year(None) is None
