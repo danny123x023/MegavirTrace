@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fmt, fmtP } from "@/lib/format";
+import { FullscreenButton, useFullHeight } from "./Panel";
 
 // Correlation by lag: one series of columns (slot 1); the strongest link is marked in slot 2 and named
 // in the legend, so identity never rests on colour alone.  Reference lines are solid hairlines.
@@ -27,7 +28,7 @@ export default function LagChart({ lags, r, p, n, best, rNeeded, labelA, labelB 
     return () => ro.disconnect();
   }, []);
 
-  const H = 220, L = 44, R = 12, T = 12, B = 34;
+  const H = useFullHeight(220, 200), L = 44, R = 12, T = 12, B = 34;
   const pw = width - L - R, ph = H - T - B;
   const vals = r.map((x) => (x === null ? 0 : x));
   const lim = Math.max(0.2, ...vals.map(Math.abs), rNeeded ?? 0) * 1.1;
@@ -41,7 +42,10 @@ export default function LagChart({ lags, r, p, n, best, rNeeded, labelA, labelB 
     <figure style={{ margin: 0 }}>
       <figcaption className="row" style={{ justifyContent: "space-between" }}>
         <strong>How closely they move together at each lag</strong>
-        <button type="button" onClick={() => setTable((t) => !t)} aria-pressed={table}>{table ? "Show chart" : "Show table"}</button>
+        <span className="row" style={{ gap: 8 }}>
+          <FullscreenButton />
+          <button type="button" onClick={() => setTable((t) => !t)} aria-pressed={table}>{table ? "Show chart" : "Show table"}</button>
+        </span>
       </figcaption>
       {!table && (
         <div className="chart-legend" aria-hidden="true">

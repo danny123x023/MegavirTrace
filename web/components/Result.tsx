@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, exportUrl, type Provenance, type Stats, type Verdict } from "@/lib/api";
 import { fmt, fmtP, fmtSigned } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import Panel from "@/components/Panel";
 
 const STATUS: Record<string, { icon: string; label: string }> = {
   significant: { icon: "▲▼", label: "Significant trend: both tests agree" },
@@ -29,7 +30,7 @@ export function VerdictCard({ verdict, dataKind, provenance }: { verdict: Verdic
   const { t } = useI18n();
   const s = STATUS[verdict.status] ?? { icon: "•", label: verdict.status };
   return (
-    <section className="card verdict" aria-labelledby="verdict-h">
+    <Panel className="verdict" aria-labelledby="verdict-h">
       <DataFlag kind={dataKind} />
       <span className="status-pill"><span aria-hidden="true">{s.icon}</span>{t(s.label)}</span>
       <h2 id="verdict-h">{verdict.headline}</h2>
@@ -45,7 +46,7 @@ export function VerdictCard({ verdict, dataKind, provenance }: { verdict: Verdic
           {" "}· {t("grid")} {provenance.grid} · {t("data v{v}", { v: provenance.data_version })} · {t("engine")} {provenance.engine_version} · {t("fingerprint")} <code>{provenance.fingerprint.slice(0, 12)}</code>
         </p>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -143,7 +144,7 @@ export function ExplainWithAI({ id }: { id: string }) {
   useEffect(() => setReply(null), [id]);
   if (!enabled) return null;
   return (
-    <section className="card" aria-label="AI explanation">
+    <Panel aria-label="AI explanation">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <strong>{t("Ask the AI scientist to explain this result")}</strong>
         <button type="button" disabled={busy} onClick={async () => {
@@ -160,6 +161,6 @@ export function ExplainWithAI({ id }: { id: string }) {
         </div>
       )}
       {reply && reply.mode !== "answered" && <p className="small muted" aria-live="polite">{reply.reason}</p>}
-    </section>
+    </Panel>
   );
 }

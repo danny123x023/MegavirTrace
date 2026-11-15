@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt, fmtSigned, niceTicks, tickLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { FullscreenButton, useFullHeight } from "./Panel";
 
 export type ChartSeries = {
   key: string;
@@ -26,7 +27,8 @@ type Props = {
 
 const PAD = { left: 52, right: 16, top: 12, bottom: 30 };
 
-export default function TrendChart({ title, labels, t, series, units, trend, height = 300, zeroLine }: Props) {
+export default function TrendChart({ title, labels, t, series, units, trend, height: baseHeight = 300, zeroLine }: Props) {
+  const height = useFullHeight(baseHeight);
   const { t: tr } = useI18n();
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
@@ -122,9 +124,12 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
     <figure style={{ margin: 0 }}>
       <figcaption className="row" style={{ justifyContent: "space-between" }}>
         <strong>{title}</strong>
-        <button type="button" onClick={() => setShowTable((s) => !s)} aria-pressed={showTable}>
-          {showTable ? tr("Show chart") : tr("Show table")}
-        </button>
+        <span className="row" style={{ gap: 8 }}>
+          <FullscreenButton />
+          <button type="button" onClick={() => setShowTable((s) => !s)} aria-pressed={showTable}>
+            {showTable ? tr("Show chart") : tr("Show table")}
+          </button>
+        </span>
       </figcaption>
       {series.length + (trend ? 1 : 0) >= 2 && !showTable && (
         <div className="chart-legend" aria-hidden="true">

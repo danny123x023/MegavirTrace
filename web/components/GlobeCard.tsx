@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import TrendChart from "@/components/TrendChart";
 import { apiGet } from "@/lib/api";
 import { fmt } from "@/lib/format";
+import Panel from "@/components/Panel";
 
 export type GlobeSite = { id: number; name: string; lat: number; lon: number; n_months: number };
 
@@ -53,7 +54,7 @@ export default function GlobeCard({ analysisId, variable, satelliteLabel, onSite
   const t = c?.months.map((m) => Number(m.slice(0, 4)) + (Number(m.slice(5, 7)) - 0.5) / 12) ?? [];
 
   return (
-    <section className="card" aria-labelledby="globe-h">
+    <Panel aria-labelledby="globe-h">
       <h2 id="globe-h">Ground truth: NASA GLOBE observations</h2>
       <p className="small muted" style={{ marginTop: 0 }}>
         Measurements by schools and volunteers in the GLOBE Program, for the same place, shown beside the satellite series as monthly
@@ -101,6 +102,6 @@ export default function GlobeCard({ analysisId, variable, satelliteLabel, onSite
           <p className="small muted" style={{ margin: 0 }}>Source: {data.source}. Sites are marked on the map.</p>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }

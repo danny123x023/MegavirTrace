@@ -512,3 +512,22 @@ pre.log {
   .dash-section > .card { padding: 15px; }
   .inline-form .field input { min-width: 0; width: 100%; }
 }
+
+/* ---- full-screen cards (components/Panel.tsx) ---------------------------------------- */
+.panel { position: relative; }
+.panel-fs { color: var(--text-secondary); background: var(--surface-1); border-color: var(--border); flex: none; }
+.panel-fs:hover:not([disabled]) { color: var(--text-primary); }
+.panel-fs.corner { position: absolute; top: 14px; right: 14px; z-index: 2; }
+.panel > h2, .panel > .data-flag, .panel > p.muted.small:first-child { margin-right: 38px; }
+.panel:fullscreen, .panel.is-covering {
+  border: 0; border-radius: 0; box-shadow: none; padding: 28px 36px; overflow: auto; background: var(--page);
+}
+.panel.is-covering { position: fixed; inset: 0; z-index: 1000; }
+.panel::backdrop { background: var(--page); }
+.panel.is-full .panel-fs.corner { top: 20px; right: 24px; }
+.panel.is-full .map-box { height: calc(100vh - 230px) !important; min-height: 320px; }
+.panel.is-full .table-scroll { max-height: calc(100vh - 170px); }
+.panel.is-full.verdict { font-size: 1.0625rem; }
+.panel.is-full.verdict h2 { font-size: 1.75rem; }
+body.panel-covering { overflow: hidden; }
+@media (max-width: 640px) { .panel:fullscreen, .panel.is-covering { padding: 18px 14px; } }

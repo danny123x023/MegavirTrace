@@ -5,6 +5,7 @@ import TrendChart from "@/components/TrendChart";
 import { apiGet, apiPost } from "@/lib/api";
 import { fmtSigned } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import Panel from "@/components/Panel";
 
 type Scenario = { label: string; median: (number | null)[]; min: (number | null)[]; max: (number | null)[]; models: number[] };
 type Result = {
@@ -76,7 +77,7 @@ export default function ProjectionsCard({ analysisId, variable }: { analysisId: 
   }
 
   return (
-    <section className="card" aria-labelledby="proj-h">
+    <Panel aria-labelledby="proj-h">
       <h2 id="proj-h">{lang === "es" ? "Proyecciones climáticas (NASA NEX-GDDP-CMIP6)" : "Climate projections (NASA NEX-GDDP-CMIP6)"}</h2>
       <p className="small muted" style={{ marginTop: 0 }}>
         {lang === "es"
@@ -129,6 +130,6 @@ export default function ProjectionsCard({ analysisId, variable }: { analysisId: 
           <p className="small muted" style={{ margin: 0 }}>{t("Source:")} {r.source}. {lang === "es" ? "Modelos" : "Models"}: {r.models_used.join(", ")}.</p>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }

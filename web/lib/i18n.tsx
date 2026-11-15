@@ -210,6 +210,8 @@ const ES: Record<string, string> = {
   // start
   "Where do I start?": "¿Por dónde empiezo?",
   "1. What kind of place?": "1. ¿Qué tipo de lugar?",
+  "Show full screen": "Ver a pantalla completa",
+  "Exit full screen": "Salir de pantalla completa",
   // import dashboard
   "On the server itself: imports allowed": "En el propio servidor: importaciones permitidas",
   "Viewing only: imports need the administrator token": "Solo lectura: para importar hace falta la clave de administrador",

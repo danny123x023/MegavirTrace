@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { fmtP, fmtSigned } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import Panel from "@/components/Panel";
 
 type Card = {
   analysis_id: string; kind: string;
@@ -93,7 +94,7 @@ export default function AskPage() {
 
       <div className="stack" style={{ marginTop: 16 }} aria-live="polite">
         {turns.map((t, i) => (
-          <section key={i} className="card" aria-label={`Answer ${i + 1}`}>
+          <Panel key={i} aria-label={`Answer ${i + 1}`}>
             <p className="muted small" style={{ marginTop: 0 }}>You asked: {t.q}</p>
             {t.r.mode === "answered" && t.r.answer && (
               <>
@@ -130,7 +131,7 @@ export default function AskPage() {
                 ))}
               </div>
             )}
-          </section>
+          </Panel>
         ))}
       </div>
       {status?.enabled && <p className="small muted">AI service: {status.provider} ({status.model}). Limits per visitor and per day keep costs bounded.</p>}

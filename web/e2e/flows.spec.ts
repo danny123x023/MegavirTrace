@@ -161,3 +161,22 @@ test("data import dashboard: NASA sources, history and stored data (read-only)",
   await expect(page.getByText("That token is not right.")).toBeVisible();
 });
 
+
+test("every result card can go full screen and back", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".verdict h2")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show full screen" })).not.toHaveCount(0);
+  const map = page.locator("section[aria-label='Where inside the region']");
+  const before = await map.locator(".map-box").evaluate((e) => e.getBoundingClientRect().height);
+  await map.getByRole("button", { name: "Show full screen" }).click();
+  await expect(map).toHaveClass(/is-full/);
+  expect(await map.locator(".map-box").evaluate((e) => e.getBoundingClientRect().height)).toBeGreaterThan(before);
+  await map.getByRole("button", { name: "Exit full screen" }).click();
+  await expect(map).not.toHaveClass(/is-full/);
+  // charts carry the switch in their header, next to "Show table"
+  const chart = page.locator("section[aria-label='Time series']");
+  await chart.getByRole("button", { name: "Show full screen" }).click();
+  await expect(chart).toHaveClass(/is-full/);
+  await chart.getByRole("button", { name: "Exit full screen" }).click();
+  await expect(chart).not.toHaveClass(/is-full/);
+});

@@ -8,6 +8,7 @@ import TrendChart from "@/components/TrendChart";
 import { apiGet, apiPost, type Catalog, type CompareResult } from "@/lib/api";
 import { fmt, fmtP, fmtSigned } from "@/lib/format";
 import { useI18n, varText } from "@/lib/i18n";
+import Panel from "@/components/Panel";
 
 type Opposites = {
   rising: { place: string; name: string; per_decade: number }[];
@@ -94,14 +95,14 @@ export default function ComparePage() {
         <div style={{ opacity: loading ? 0.55 : 1 }} aria-busy={loading}>
           <div className="grid-2">
             <div className="stack">
-              <section className="card verdict" aria-labelledby="cmp-h">
+              <Panel className="verdict" aria-labelledby="cmp-h">
                 <DataFlag kind={result.data.kind} />
                 <span className="status-pill"><span aria-hidden="true">{d.significant ? "▲▼" : "○"}</span>{d.significant ? t("The trends really differ") : t("No clear difference")}</span>
                 <h2 id="cmp-h">{result.verdict.headline}</h2>
                 {result.verdict.sentences.map((s, i) => <p key={i}>{s}</p>)}
                 <ul className="caveats">{result.verdict.caveats.map((s, i) => <li key={i}>{s}</li>)}</ul>
-              </section>
-              <section className="card" aria-label="Both regions">
+              </Panel>
+              <Panel aria-label="Both regions">
                 <TrendChart
                   title={`${varText(result.variable, lang)}: ${result.region_a.name} — ${result.region_b.name}`}
                   labels={c.labels}
@@ -112,8 +113,8 @@ export default function ComparePage() {
                     { key: "b", label: `B: ${result.region_b.name}`, color: "var(--series-2)", values: c.b },
                   ]}
                 />
-              </section>
-              <section className="card" aria-label="The difference">
+              </Panel>
+              <Panel aria-label="The difference">
                 <TrendChart
                   title={`Difference, A minus B (${result.units})`}
                   labels={c.labels}
@@ -122,13 +123,13 @@ export default function ComparePage() {
                   series={[{ key: "d", label: "A minus B", color: "var(--series-1)", values: c.diff }]}
                   zeroLine
                 />
-              </section>
+              </Panel>
             </div>
             <div className="stack">
-              <section className="card" aria-label="Map of both regions">
+              <Panel aria-label="Map of both regions">
                 <h2>{t("The two regions")}</h2>
                 <EarthMap outlines={[{ geometry: result.region_a.geometry, bbox: result.region_a.bbox }, { geometry: result.region_b.geometry, bbox: result.region_b.bbox }]} height={320} />
-              </section>
+              </Panel>
               <div className="tiles">
                 <div className="tile"><div className="label">{t("Difference in trend")}</div><div className="value">{fmtSigned(d.slope_per_decade)} {result.units}</div><div className="sub">per decade · 95% range {fmtSigned(d.ci_low_per_decade)} to {fmtSigned(d.ci_high_per_decade)}</div></div>
                 <div className="tile"><div className="label">{t("Test on the difference")}</div><div className="value">p {fmtP(d.p).startsWith("<") ? fmtP(d.p) : "= " + fmtP(d.p)}</div><div className="sub">{t("both tests must agree")}</div></div>
@@ -143,7 +144,7 @@ export default function ComparePage() {
         </div>
       )}
 
-      <section className="card" style={{ marginTop: 20 }} aria-labelledby="opp-h">
+      <Panel style={{ marginTop: 20 }} aria-labelledby="opp-h">
         <h2 id="opp-h">{t("Find regions with opposite trends")}</h2>
         <p className="muted small">
           Scans the preset regions for robust, significant trends in {varInfo?.name.toLowerCase() ?? "this variable"} that point in opposite
@@ -170,7 +171,7 @@ export default function ComparePage() {
             <p className="small muted">{opp.rising.length} presets rising, {opp.falling.length} falling (robust and significant). {opp.note}</p>
           </div>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

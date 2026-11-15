@@ -11,6 +11,7 @@ import TrendChart from "@/components/TrendChart";
 import { apiGet, apiPost, type Catalog, type Region, type TrendResult } from "@/lib/api";
 import { MODE_LABEL } from "@/lib/format";
 import { useI18n, varText } from "@/lib/i18n";
+import Panel from "@/components/Panel";
 
 function regionFromParams(sp: URLSearchParams): Chosen | null {
   const place = sp.get("place");
@@ -144,7 +145,7 @@ export default function ExploreClient() {
           <div className="grid-2">
             <div className="stack">
               <VerdictCard verdict={result.verdict} dataKind={result.data.kind} provenance={result.provenance} />
-              <section className="card" aria-label="Time series">
+              <Panel aria-label="Time series">
                 <TrendChart
                   title={`${varText(result.variable, lang)} — ${result.region.name}${s?.season ? ` (${s.season})` : ""}`}
                   labels={s!.labels}
@@ -155,10 +156,10 @@ export default function ExploreClient() {
                   zeroLine={s!.mode === "monthly"}
                 />
                 {s!.mode === "raw" && <p className="small muted">{t("Raw months are shown as measured; the statistics use monthly anomalies (each month compared with the same month in other years).")}</p>}
-              </section>
+              </Panel>
             </div>
             <div className="stack">
-              <section className="card" aria-label="Where inside the region">
+              <Panel aria-label="Where inside the region">
                 <h2>{t("Where is it changing?")}</h2>
                 <EarthMap
                   outlines={[{ geometry: result.region.geometry ?? null, bbox: result.region.bbox }]}
@@ -170,7 +171,7 @@ export default function ExploreClient() {
                   onBox={onBox}
                   points={globeSites}
                 />
-              </section>
+              </Panel>
               <ExplainWithAI id={result.id} />
               <GlobeCard analysisId={result.id} variable={result.variable.id} satelliteLabel={result.variable.source_badge} onSites={setGlobeSites} />
               <ProjectionsCard analysisId={result.id} variable={result.variable.id} />

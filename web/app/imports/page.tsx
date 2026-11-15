@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend, setAdminToken } from "@/lib/api";
+import Panel from "@/components/Panel";
 import { useI18n } from "@/lib/i18n";
 
 // ---- types (from /api/admin/*) -----------------------------------------------------------
@@ -175,7 +176,7 @@ function AdminSignIn({ ov, onChange }: { ov: Overview; onChange: () => void }) {
   }
   return (
     <section className="dash-section" aria-labelledby="admin-h">
-      <div className="card">
+      <Panel as="div">
         <h2 id="admin-h"><Icon d={LOCK} /> {t("Administrator sign-in")}</h2>
         <p className="sub">
           {t("Everyone can see this page. Imports, deletions and account changes need the administrator token. To see it, run this on the server:")}{" "}
@@ -198,7 +199,7 @@ function AdminSignIn({ ov, onChange }: { ov: Overview; onChange: () => void }) {
             {msg && <span className="error" role="alert">{msg}</span>}
           </form>
         )}
-      </div>
+      </Panel>
     </section>
   );
 }
@@ -217,7 +218,7 @@ function EarthdataCard({ ov, canAct, act }: { ov: Overview; canAct: boolean; act
 
   return (
     <section className="dash-section" aria-labelledby="ed-h">
-      <div className="card">
+      <Panel as="div">
         <h2 id="ed-h"><Icon d={KEY} /> {t("NASA Earthdata account")}</h2>
         <p className="sub">{t("Needed for the sources marked \"Earthdata Login\" below. The password is kept only on the server, never in the database, and is never shown again.")}</p>
         <p className="small" style={{ margin: "0 0 6px" }}>
@@ -282,7 +283,7 @@ function EarthdataCard({ ov, canAct, act }: { ov: Overview; canAct: boolean; act
             <button type="button" onClick={() => { setEditing(false); setPass(""); }}>{t("Cancel")}</button>
           </form>
         )}
-      </div>
+      </Panel>
     </section>
   );
 }
@@ -325,7 +326,7 @@ function CatalogSection({ cat, ov, canAct, act }: { cat: Catalog | null; ov: Ove
 
   return (
     <section className="dash-section" aria-labelledby="cat-h">
-      <div className="card">
+      <Panel as="div">
         <h2 id="cat-h"><Icon d={CLOUD} /> {t("1. Available from NASA")}</h2>
         <p className="sub">
           {cat?.checked_at
@@ -409,7 +410,7 @@ function CatalogSection({ cat, ov, canAct, act }: { cat: Catalog | null; ov: Ove
           </label>
         </div>
         <p className="hint">{t("Nothing is imported twice: files already on disk are not downloaded again, and an import whose data is identical to what is stored keeps the stored version. Each import covers the source's whole record.")}</p>
-      </div>
+      </Panel>
     </section>
   );
 }
@@ -463,7 +464,7 @@ function ProgressSection({ ov, hist, query, setQuery, canAct, act }: {
 
   return (
     <section className="dash-section" aria-labelledby="prog-h">
-      <div className="card">
+      <Panel as="div">
         <h2 id="prog-h"><Icon d={PULSE} /> {t("2. Import progress")}</h2>
         <p className="sub">{t("Each import downloads, builds the grid, then swaps it in, and records what it did with every variable. Updates every few seconds.")}</p>
         <div aria-live="polite">
@@ -583,7 +584,7 @@ function ProgressSection({ ov, hist, query, setQuery, canAct, act }: {
             </span>
           </div>
         )}
-      </div>
+      </Panel>
     </section>
   );
 }
@@ -636,7 +637,7 @@ function DatabaseSection({ db }: { db: Db | null }) {
 
   return (
     <section className="dash-section" aria-labelledby="db-h">
-      <div className="card">
+      <Panel as="div">
         <h2 id="db-h"><Icon d={DB} /> {t("3. In the database")}</h2>
         <p className="sub">{t("What each variable holds, the period it covers, and how long it has been stored.")}</p>
         <div className="table-tools">
@@ -691,7 +692,7 @@ function DatabaseSection({ db }: { db: Db | null }) {
           </table>
         </div>
         {db && <p className="hint">{t("Showing {a} of {b} variables. Click a column title to sort; click again to reverse.", { a: rows.length, b: db.rows.length })}</p>}
-      </div>
+      </Panel>
     </section>
   );
 }

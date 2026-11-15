@@ -8,6 +8,7 @@ import TrendChart from "@/components/TrendChart";
 import { apiGet, apiPost, type Catalog, exportUrl, type Verdict } from "@/lib/api";
 import { fmt } from "@/lib/format";
 import { useI18n, varText } from "@/lib/i18n";
+import Panel from "@/components/Panel";
 
 type Related = {
   id: string;
@@ -85,7 +86,7 @@ export default function RelatedPage() {
       {res && rel && (
         <div style={{ opacity: busy ? 0.55 : 1 }} aria-busy={busy}>
           <div className="grid-2">
-            <section className="card verdict" aria-labelledby="rel-h">
+            <Panel className="verdict" aria-labelledby="rel-h">
               <DataFlag kind={res.data_kind} />
               <span className="status-pill"><span aria-hidden="true">{rel.significant ? "⇄" : "○"}</span>{rel.significant ? tr("They move together") : tr("No clear relationship")}</span>
               <h2 id="rel-h">{res.verdict.headline}</h2>
@@ -95,13 +96,13 @@ export default function RelatedPage() {
                 Independent pairs after allowing for memory: about {Math.round(rel.n_eff)} (variance × {fmt(rel.variance_inflation, 2)}).{" "}
                 <a href={exportUrl(res.id, "csv")} download>CSV</a> · <a href={exportUrl(res.id, "json")} download>JSON</a>
               </p>
-            </section>
-            <section className="card" aria-label="Correlation by lag">
+            </Panel>
+            <Panel aria-label="Correlation by lag">
               <LagChart lags={rel.lags} r={rel.r} p={rel.p} n={rel.n} best={rel.best_lag} rNeeded={rel.r_needed}
                 labelA={res.variable_a.name.toLowerCase()} labelB={res.variable_b.name.toLowerCase()} />
-            </section>
+            </Panel>
           </div>
-          <section className="card" style={{ marginTop: 16 }} aria-label="Both series">
+          <Panel style={{ marginTop: 16 }} aria-label="Both series">
             <TrendChart
               title={`${res.variable_a.name} and ${res.variable_b.name} — ${res.region.name}, standardized anomalies`}
               labels={rel.labels}
@@ -115,7 +116,7 @@ export default function RelatedPage() {
               height={260}
             />
             <p className="small muted">Each series is shown in its own standard deviations (z-scores) after removing its seasonal cycle and trend, so both fit one axis.</p>
-          </section>
+          </Panel>
         </div>
       )}
     </div>
