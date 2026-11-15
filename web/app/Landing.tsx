@@ -16,6 +16,7 @@ type Hero = {
   analysis_id: string; variable: Variable; region: string; units: string;
   labels: string[]; values: (number | null)[]; trend_line: (number | null)[];
   headline: string; per_decade: number; significant: boolean; product: string; doi: string | null; last_month: string;
+  since: number; full_since: number; full_per_decade: number;  // headline rate since `since`; the long-run average as context
 };
 type Summary = {
   variables: number; themes: string[]; products: string[]; first_month: string | null; last_month: string | null;
@@ -24,6 +25,7 @@ type Summary = {
 
 const FEATURED = ["europe-heatwave-2003", "arctic-sea-ice-2012", "lockdown-air-2020"];
 const HERO_EXPLORE = "/explore?v=temp_change&mode=annual&place=preset%3Aglobe&label=Whole+Earth";
+const heroExplore = (since: number) => `${HERO_EXPLORE}&start=${since}`;  // the same analysis as the headline
 
 const TRY = [
   { label: "The whole Earth's temperature", href: HERO_EXPLORE },
@@ -210,9 +212,10 @@ function LiveCard({ summary, failed }: { summary: Summary | null; failed: boolea
           {hero.significant && <Icon d={ICONS.check} size={14} />}
           {hero.significant ? t("More than chance") : t("Not clearly more than chance")}
         </span>
-        <span className="lp-badge">{t("Trend: {x} per decade", { x: `${fmtSigned(hero.per_decade, 2)} ${hero.units}` })}</span>
+        <span className="lp-badge">{t("Trend since {year}: {x} per decade", { year: String(hero.since), x: `${fmtSigned(hero.per_decade, 2)} ${hero.units}` })}</span>
+        <span className="lp-badge">{t("Average since {year}: {x} per decade", { year: String(hero.full_since), x: `${fmtSigned(hero.full_per_decade, 2)} ${hero.units}` })}</span>
       </div>
-      <Link className="lp-live-link" href={HERO_EXPLORE}>
+      <Link className="lp-live-link" href={heroExplore(hero.since)}>
         {t("Open this result in Explore")} <Icon d={ICONS.arrow} size={15} />
       </Link>
     </figure>

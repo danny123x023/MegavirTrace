@@ -806,6 +806,11 @@ def month_detail(conn, var_id: str, region_spec: dict, year: int, month: int) ->
 # The landing page: what the site holds, and one live result (the whole Earth's surface temperature
 # change, year by year).  Warmed by `precompute` in both languages.
 LANDING_TREND = {"variable": "temp_change", "region": {"place": "preset:globe"}, "cell_map": False}
+# The headline rate: warming is not a straight line since 1880 (about 0.08 °C per decade on average,
+# about 0.2 since the mid-1970s), so the live result states the rate of the modern period and shows
+# the whole record as context.  1975 is the start NASA uses for the recent rate.
+LANDING_SINCE = 1975
+LANDING_RECENT = {**LANDING_TREND, "start_year": LANDING_SINCE}
 
 
 def landing_summary(conn, lang: str) -> dict:
@@ -813,21 +818,26 @@ def landing_summary(conn, lang: str) -> dict:
     real = [v for v in cat["variables"] if (v.get("data") or {}).get("kind") == "real"]
     hero = None
     try:
-        r = run_trend(conn, {**LANDING_TREND, "lang": lang})
+        full = run_trend(conn, {**LANDING_TREND, "lang": lang})
+        r = run_trend(conn, {**LANDING_RECENT, "lang": lang})
         if r["provenance"]["data_kind"] != "real":
             raise AnalysisError("the landing page shows real measurements only")
-        s, st = r["series"], r["stats"]
+        s, st = full["series"], r["stats"]
+        recent_line = dict(zip(r["series"]["labels"], r["series"]["trend_line"], strict=True))
         hero = {
             "analysis_id": r["id"],
             "variable": r["variable"],
             "region": r["region"]["name"],
             "units": r["units"],
-            "labels": s["labels"],
+            "labels": s["labels"],  # the whole record, for the chart and the stripes
             "values": s["values"],
-            "trend_line": s["trend_line"],
+            "trend_line": [recent_line.get(lab) for lab in s["labels"]],  # the recent trend only
+            "since": LANDING_SINCE,
             "headline": r["verdict"]["headline"],
             "per_decade": st["per_decade"]["sen"],
             "significant": st["significant"],
+            "full_since": int(full["stats"]["first"]),
+            "full_per_decade": full["stats"]["per_decade"]["sen"],
             "product": r["provenance"]["product"],
             "doi": r["provenance"]["doi"],
             "last_month": r["data"]["last_month"],  # the last year may be partial

@@ -276,6 +276,8 @@ const ES: Record<string, string> = {
   "Investigate your own area": "Investiga tu propia zona",
   "Next case": "Siguiente caso",
   "Trend: {x} per decade": "Tendencia: {x} por década",
+  "Trend since {year}: {x} per decade": "Tendencia desde {year}: {x} por década",
+  "Average since {year}: {x} per decade": "Media desde {year}: {x} por década",
   "usual: {v}": "habitual: {v}",
   "marked": "marcado",
   "Dark": "Oscuro",

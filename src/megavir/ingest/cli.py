@@ -97,13 +97,14 @@ def cmd_precompute(conn, variables: list[str], countries: bool) -> None:
                 skipped += 1
         print(f"{var}: {done} regions stored, {skipped} without data, {time.time() - t0:.0f}s")
     # the landing page's live result (both languages), so the first visitor does not wait for it
-    from megavir.api.service import LANDING_TREND
+    from megavir.api.service import LANDING_RECENT, LANDING_TREND
 
     for lang in ("en", "es"):
-        try:
-            run_trend(conn, {**LANDING_TREND, "lang": lang})
-        except AnalysisError as e:
-            print(f"landing page: {e}")
+        for req in (LANDING_TREND, LANDING_RECENT):
+            try:
+                run_trend(conn, {**req, "lang": lang})
+            except AnalysisError as e:
+                print(f"landing page: {e}")
     # the detective cases (both languages), so their page opens without waiting
     from megavir.cases import CASES, run_case
 
