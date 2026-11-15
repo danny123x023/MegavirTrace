@@ -96,6 +96,17 @@ def cmd_precompute(conn, variables: list[str], countries: bool) -> None:
             except AnalysisError:
                 skipped += 1
         print(f"{var}: {done} regions stored, {skipped} without data, {time.time() - t0:.0f}s")
+    # the detective cases (both languages), so their page opens without waiting
+    from megavir.cases import CASES, run_case
+
+    t0 = time.time()
+    for lang in ("en", "es"):
+        for case in CASES:
+            r = run_case(conn, case.id, lang)
+            for step in r["steps"]:
+                if "error" in step:
+                    print(f"case {case.id}: {step['title']}: {step['error']}")
+    print(f"detective cases: {len(CASES)} stored in 2 languages, {time.time() - t0:.0f}s")
 
 
 def cmd_gistemp_check(conn) -> dict:

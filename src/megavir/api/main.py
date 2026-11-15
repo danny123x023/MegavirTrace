@@ -10,6 +10,7 @@
 | GET  /analysis/month                       | how unusual one month was (exploratory)         |
 | POST /ai/ask, /ai/explain                  | AI scientist (explain takes an analysis id)     |
 | GET  /reports/{id}, /reports/{id}/export   | saved results; CSV, Excel, PDF, notebook        |
+| GET  /cases, /cases/{id}                   | detective cases: real events, computed live     |
 | GET  /basemap/style/{theme}, /basemap/...  | detailed street map (OpenStreetMap), relayed    |
 | GET  /v1/...  (public: /api/v1/...)        | documented, read-only, rate-limited data API    |
 """
@@ -24,6 +25,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from megavir import cases as detective
 from megavir.catalog import DATASETS, PLANNED_DATASETS
 from megavir.places.load import normalise
 from megavir.places.presets import PRESETS
@@ -247,6 +249,31 @@ def analysis_month(
     region = {"place": place} if place else {"bbox": [west, south, east, north]}
     with connect() as conn:
         return service.month_detail(conn, variable, region, year, month)
+
+
+# --------------------------------------------------------------------------------------
+# Detective cases
+# --------------------------------------------------------------------------------------
+
+
+@app.get("/cases")
+def cases_list(lang: str = Query("en", max_length=5)):
+    """Every case with its key finding and a small chart, computed from the stored data."""
+    with connect() as conn:
+        return {"cases": detective.list_cases(conn, lang), "rev": detective.CASES_REV}
+
+
+@app.get("/cases/{case_id}")
+def case_detail(case_id: str, lang: str = Query("en", max_length=5)):
+    """One case, every step run through the engine, with findings written from the results."""
+    if case_id not in detective.BY_ID:
+        raise HTTPException(404, "unknown case")
+    with connect() as conn:
+        result = detective.run_case(conn, case_id, lang)
+    ids = [c.id for c in detective.CASES]
+    i = ids.index(case_id)
+    nxt = detective.CASES[(i + 1) % len(ids)]
+    return {**result, "next": {"id": nxt.id, "title": nxt.title}}
 
 
 # --------------------------------------------------------------------------------------

@@ -23,11 +23,15 @@ type Props = {
   trend?: { line: (number | null)[]; slopeLow: number; slopeHigh: number; label: string } | null;
   height?: number;
   zeroLine?: boolean;
+  /** points to mark (an event year), drawn as a ring with its label */
+  highlight?: number[];
+  /** a dashed reference level, e.g. the usual value */
+  refLine?: { value: number; label: string } | null;
 };
 
 const PAD = { left: 52, right: 16, top: 12, bottom: 30 };
 
-export default function TrendChart({ title, labels, t, series, units, trend, height: baseHeight = 300, zeroLine }: Props) {
+export default function TrendChart({ title, labels, t, series, units, trend, height: baseHeight = 300, zeroLine, highlight = [], refLine }: Props) {
   const height = useFullHeight(baseHeight);
   const { t: tr } = useI18n();
   const wrap = useRef<HTMLDivElement>(null);
@@ -69,6 +73,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
       }
     }
     if (zeroLine) ys.push(0);
+    if (refLine) ys.push(refLine.value);
     const xmin = Math.min(...xs), xmax = Math.max(...xs);
     let ymin = Math.min(...ys), ymax = Math.max(...ys);
     if (ymin === ymax) { ymin -= 1; ymax += 1; }
@@ -79,7 +84,7 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
     const Y = (v: number) => PAD.top + (1 - (v - y0) / (y1 - y0 || 1)) * ph;
     const xt = niceTicks(xmin, xmax, Math.max(2, Math.floor(pw / 90))).filter((v) => v >= xmin && v <= xmax);
     return { X, Y, yt, xt, pw, ph, fan };
-  }, [idx, t, series, trend, width, height, zeroLine]);
+  }, [idx, t, series, trend, width, height, zeroLine, refLine]);
 
   if (idx.length === 0) return <p className="muted">No values to plot.</p>;
   const { X, Y, yt, xt, fan } = geom;
@@ -156,8 +161,8 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
             </thead>
             <tbody>
               {idx.map((i) => (
-                <tr key={i}>
-                  <td>{labels[i]}</td>
+                <tr key={i} className={highlight.includes(i) ? "row-marked" : undefined}>
+                  <td>{labels[i]}{highlight.includes(i) ? ` (${tr("marked")})` : ""}</td>
                   {series.map((s) => <td key={s.key}>{fmt(s.values[i], 3)}</td>)}
                   {trend && <td>{fmt(trend.line[i], 3)}</td>}
                 </tr>
@@ -205,6 +210,27 @@ export default function TrendChart({ title, labels, t, series, units, trend, hei
               </g>
             ))}
             {trend && <path d={path(trend.line)} fill="none" stroke="var(--series-2)" strokeWidth={2} strokeLinecap="round" />}
+            {refLine && (
+              <g>
+                <line x1={PAD.left} x2={width - PAD.right} y1={Y(refLine.value)} y2={Y(refLine.value)} stroke="var(--text-secondary)" strokeWidth={1.25} strokeDasharray="5 4" />
+                <text x={width - PAD.right} y={Y(refLine.value) - 5} textAnchor="end" fontSize={11} fill="var(--text-secondary)" className="chart-label">{refLine.label}</text>
+              </g>
+            )}
+            {highlight.map((i) => {
+              const v = series[0]?.values[i];
+              if (v === null || v === undefined || t[i] === null) return null;
+              const cx = X(t[i] as number), cy = Y(v);
+              const above = cy > PAD.top + 22;
+              return (
+                <g key={`hl-${i}`} className="chart-highlight">
+                  <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="var(--text-primary)" strokeWidth={2} />
+                  <text
+                    x={Math.min(Math.max(cx, PAD.left + 16), width - PAD.right - 16)} y={above ? cy - 13 : cy + 22}
+                    textAnchor="middle" fontSize={12} fontWeight={700} fill="var(--text-primary)" className="chart-label"
+                  >{labels[i].replace(/ (DJF|MAM|JJA|SON)$/, "")}</text>
+                </g>
+              );
+            })}
             {hover !== null && (
               <g>
                 <line x1={hx} x2={hx} y1={PAD.top} y2={height - PAD.bottom} stroke="var(--axis)" strokeWidth={1} />

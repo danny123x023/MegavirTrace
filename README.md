@@ -17,6 +17,12 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
   or use the location button. The trend colours fade as you zoom in and have a strength slider.
 - **Compare:** tests whether two regions' trends really differ, using the trend of their difference series.
   It also finds pairs of preset regions with opposite trends.
+- **Detective cases:** 20 guided investigations of real events and documented changes: Europe's 2003
+  heatwave, Pakistan's 2022 floods, Australia's Black Summer, the 2020 lockdowns, northwest India's groundwater,
+  Arctic amplification and more. Each one names its regions and NASA variables. The story says only what
+  happened and where to look; every step is computed live from the stored data. It shows how unusual the event
+  month was, the trend behind it, and whether later years went past it, and the findings are written from
+  those numbers. Cards show the measured key finding and a small chart of the real series.
 - **Related variables:** do two variables rise and fall together in one place, possibly with a delay? Seasonal
   cycles and trends are removed first, and significance allows for month-to-month memory and for the lags
   searched. Always labelled "related, not caused by".
@@ -121,6 +127,15 @@ $I admin-token   # MEGAVIR_ADMIN_TOKEN from .env, or a random one kept in data/a
 ```
 
 An import of a product never runs twice at once: the dashboard and the command line share a per-product lock.
+
+### Detective cases
+
+The cases are defined in `src/megavir/cases/catalog.py`: a story, a question, and 2 to 4 steps (one month
+against the same month of every year, a trend, or a comparison of two regions), each naming a region and
+variable. `cases/run.py` runs every step through the engine and writes the findings from the results, in
+English or Spanish. Results are cached like any analysis, and `precompute` prepares them after each import.
+Stories may state only widely reported facts about what happened, never a measured result. Bump `CASES_REV`
+when a case changes.
 
 ### The street map
 

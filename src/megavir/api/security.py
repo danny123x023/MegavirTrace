@@ -73,7 +73,7 @@ class OriginAndHeaders(BaseHTTPMiddleware):
                 return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
         limiter = (
             self.limiter
-            if request.url.path.startswith(("/analysis", "/ai", "/reports", "/v1", "/context"))
+            if request.url.path.startswith(("/analysis", "/ai", "/reports", "/v1", "/context", "/cases"))
             else self.map_limiter
             if request.url.path.startswith("/basemap")
             else None

@@ -153,3 +153,38 @@ export async function apiPost<T>(path: string, body: unknown, signal?: AbortSign
 }
 
 export const exportUrl = (id: string, format: string) => `/api/reports/${id}/export?format=${format}`;
+
+// ---- detective cases ---------------------------------------------------------------------
+
+export type CaseChart = {
+  kind: "month" | "trend" | "compare";
+  title?: string;
+  labels: string[];
+  t?: (number | null)[];
+  series: { key: string; label?: string; values: (number | null)[] }[];
+  highlight: number[];
+  units: string;
+  mean?: number;
+  trend?: { line: (number | null)[]; low: number; high: number };
+  per_decade_label?: string;
+};
+export type CaseVariable = { id: string; name: string; units: string; product: string; doi: string | null };
+export type CaseStep = {
+  kind: "month" | "trend" | "compare";
+  title: string;
+  look: string;
+  variable: CaseVariable;
+  explore: Record<string, string | number>;
+  finding?: string;
+  chart?: CaseChart;
+  region?: string;
+  analysis_id?: string | null;
+  error?: string;
+};
+export type CaseInfo = {
+  id: string; title: string; theme: string; kind: "event" | "change"; when: string; where: string;
+  story: string; question: string; takeaway: string; skills: string[]; n_steps: number;
+  variables: CaseVariable[]; regions: { label: string; bbox: number[] }[]; data_kind: string;
+};
+export type CaseSummary = CaseInfo & { evidence: { finding: string; title: string; chart: CaseChart } | null };
+export type CaseDetail = CaseInfo & { steps: CaseStep[]; key: number; lang: string };

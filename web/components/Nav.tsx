@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/compare", label: "Compare" },
   { href: "/related", label: "Related variables" },
   { href: "/start", label: "Start here" },
+  { href: "/cases", label: "Detective cases" },
   { href: "/ask", label: "Ask the AI" },
   { href: "/methods", label: "Method" },
   { href: "/imports", label: "Data import" },

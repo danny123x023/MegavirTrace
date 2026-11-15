@@ -7,7 +7,7 @@
 const VERSION = "mt-v1";
 const TILES = "mt-tiles-v1";
 const TILE_LIMIT = 2000;
-const SHELL = ["/", "/compare", "/related", "/start", "/ask", "/methods", "/world.json", "/maplibre-gl-worker.mjs"];
+const SHELL = ["/", "/compare", "/related", "/start", "/cases", "/ask", "/methods", "/world.json", "/maplibre-gl-worker.mjs"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

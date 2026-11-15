@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const PAGES = ["/", "/compare", "/related", "/start", "/ask", "/methods", "/imports"];
+const PAGES = ["/", "/compare", "/related", "/start", "/cases", "/cases/europe-heatwave-2003", "/ask", "/methods", "/imports"];
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} theme`, () => {
@@ -12,6 +12,7 @@ for (const scheme of ["light", "dark"] as const) {
         page.on("pageerror", (e) => errors.push(String(e)));
         await page.goto(path);
         if (path === "/" || path === "/compare" || path === "/related") await expect(page.locator(".verdict h2").first()).toBeVisible();
+        else if (path.startsWith("/cases")) await expect(page.locator(".case-card, .case-step").first()).toBeVisible();
         else await page.waitForLoadState("load");
         await page.waitForTimeout(1500);
         const res = await new AxeBuilder({ page })
@@ -111,7 +112,7 @@ test("phone layout: nothing wider than the screen, every page link in view", asy
     await expect(page.locator(".verdict h2")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     const links = page.getByRole("navigation", { name: "Main" }).getByRole("link");
-    await expect(links).toHaveCount(7);
+    await expect(links).toHaveCount(8);
     for (const link of await links.all()) {
       await expect(link).toBeInViewport({ ratio: 1 });
     }
@@ -232,4 +233,41 @@ test.describe("ask page", () => {
     await expect(page.locator("#q-need")).toHaveCount(0);
     expect(asked).toBe(0);
   });
+});
+
+test("detective cases: cards show measured findings; a case runs step by step to its summary", async ({ page }) => {
+  await page.goto("/cases");
+  const cards = page.locator(".case-card");
+  await expect(cards.first()).toBeVisible();
+  expect(await cards.count()).toBeGreaterThanOrEqual(16);
+  // every card carries a finding computed from the data, not just a story
+  await expect(cards.first().locator(".case-evidence")).toContainText("Measured");
+  await page.getByRole("button", { name: /^Fire/ }).click();
+  await expect(cards).toHaveCount(2);
+  await page.getByRole("button", { name: /^All/ }).click();
+
+  await page.getByRole("link", { name: /Lockdown 2020/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Lockdown 2020: did the air really clear?");
+  await expect(page.locator(".case-step")).toHaveCount(1);
+  await expect(page.locator(".case-finding").first()).toContainText(/standard deviations below normal/);
+  await expect(page.locator(".case-step").first().getByRole("img", { name: /values from/ })).toBeVisible();
+  await page.getByRole("button", { name: /^Next step:/ }).click();
+  await expect(page.locator(".case-step")).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: "Northern Italy, April 2020" })).toBeFocused();
+  await page.getByRole("button", { name: /^Next step:/ }).click();
+  await page.getByRole("button", { name: /^Next step:/ }).click();
+  await page.getByRole("button", { name: "See the case summary" }).click();
+  await expect(page.getByRole("heading", { name: "Case summary: what the measurements say" })).toBeFocused();
+  await page.reload();
+  await expect(page.locator(".case-step")).toHaveCount(1);
+  await page.getByRole("button", { name: /^Next step:/ }).click();
+  // showing the rest opens every step and the summary, and moves on to the first new step
+  await page.getByRole("button", { name: "Show all steps" }).click();
+  await expect(page.locator(".case-step")).toHaveCount(4);
+  await expect(page.getByRole("heading", { name: "Delhi, April 2020" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Case summary: what the measurements say" })).toBeVisible();
+  await expect(page.locator(".case-findings li")).toHaveCount(4);
+  // the same analysis can be reopened on the Explore page
+  const href = new URL((await page.getByRole("link", { name: "See the full record in Explore" }).first().getAttribute("href")) as string, "http://x");
+  expect([href.pathname, href.searchParams.get("v"), href.searchParams.get("place")]).toEqual(["/", "no2", "preset:north_china_plain"]);
 });
