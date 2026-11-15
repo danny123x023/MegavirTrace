@@ -823,7 +823,8 @@ VARIABLES: dict[str, Variable] = {
             source_badge="NSIDC · DMSP",
             definition="The share of the sea surface covered by ice, measured by satellite microwave sensors since 1978.",
             why_it_can_trend="Warmer air and water melt sea ice and shorten the frozen season.",
-            caveat="Summer melt ponds look like open water; a small hole at the North Pole is never seen (shown as missing).",
+            caveat="Summer melt ponds look like open water. The disc around the North Pole that the satellites never see "
+            "(1.2 million km² before 1987, 0.03 million km² now) is counted as ice-covered, as in NSIDC's Sea Ice Index.",
             rising_words=("gaining sea ice", "losing sea ice"),
             decimals=1,
         ),

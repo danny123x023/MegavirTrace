@@ -152,7 +152,9 @@ ES: dict[str, dict] = {
         "name": "Concentración de hielo marino",
         "definition": "La parte de la superficie del mar cubierta de hielo, medida por sensores de microondas en satélites desde 1978.",
         "why_it_can_trend": "El aire y el agua más cálidos funden el hielo marino y acortan la temporada helada.",
-        "caveat": "Los charcos de deshielo en verano parecen agua abierta; un pequeño círculo en el Polo Norte nunca se observa (aparece como sin datos).",
+        "caveat": "Los charcos de deshielo en verano parecen agua abierta. El círculo alrededor del Polo Norte que los "
+        "satélites nunca ven (1,2 millones de km² antes de 1987, 0,03 millones de km² ahora) se cuenta como cubierto de "
+        "hielo, como en el Sea Ice Index del NSIDC.",
         "rising_words": ("a ganar hielo marino", "a perder hielo marino"),
     },
     "co2": {

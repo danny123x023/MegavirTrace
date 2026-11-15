@@ -22,7 +22,12 @@ Six more were added later (MODIS land surface temperature and snow cover, MERRA-
 budget, NSIDC-0051 sea ice and OCO-2 GEOS XCO₂). CERES comes as one file for the whole record, MODIS snow as HDF4
 without OPeNDAP, and sea ice on a 25 km polar stereographic grid. Sea-ice pixel centres are converted to latitude
 and longitude with the ellipsoidal inverse projection (Snyder 1987, Hughes ellipsoid, true scale at 70°; checked
-against NSIDC's published grid corners) and averaged into the 0.5° cells that contain them.
+against NSIDC's published grid corners) and averaged into the 0.5° cells that contain them. Poleward of about
+78° a 0.5° cell is narrower than a pixel, so cells that hold no pixel centre take the value of the pixel that
+contains the cell's centre. The disc around the North Pole that the satellites never see (flag 251) is counted as
+ice, as in NSIDC's Sea Ice Index: it shrank from 1.2 to 0.3 to 0.03 million km² with each new sensor, and left
+missing it made early years read low (the Arctic September decline came out about 8% too small, with a step in
+1987).
 
 Fields are regridded conservatively to a common 0.5° grid. AIRS keeps its 1° grid and GISTEMP its 2° grid.
 For regular latitude–longitude cells the regridding separates into a latitude overlap matrix, weighted by

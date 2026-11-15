@@ -238,8 +238,25 @@ def test_sea_ice_projection_flags_and_binning(tmp_path):
     assert month == 2024 * 12 and la.shape == (y.size, x.size)
     conc = p.outputs["sea_ice"](fields, month)
     assert np.nanmax(conc) == pytest.approx(80.0) and np.isnan(conc[0, 0])
-    grid = bin_to_grid(la, lo, conc, GridSpec.global_grid(0.5))
+    spec = GridSpec.global_grid(0.5)
+    grid = bin_to_grid(la, lo, conc, spec)
     assert np.nanmean(grid) == pytest.approx(80.0) and np.isnan(grid[0]).all()  # nothing near the South Pole
+    # near the pole a 0.5° cell is narrower than a 25 km pixel: no cell may be left empty
+    assert np.isfinite(grid[spec.lats >= 75.0]).all()
+
+    # the pole hole (flag 251) is ice, as in NSIDC's Sea Ice Index
+    rr = np.hypot(*np.meshgrid(x, y))
+    raw[0][rr < 300000] = 251
+    with h5py.File(f, "w") as fh:
+        ds = fh.create_dataset("F17_ICECON", data=raw)
+        ds.attrs["scale_factor"] = 0.004
+        fh.create_dataset("x", data=x)
+        fh.create_dataset("y", data=y)
+    ((_, fields, la, lo),) = p.reader(f, "2024-01-01T00:00:00Z")
+    conc = p.outputs["sea_ice"](fields, month)
+    assert np.nanmax(conc) == pytest.approx(100.0) and conc[rr < 300000].min() == pytest.approx(100.0)
+    polar = bin_to_grid(la, lo, conc, spec)
+    assert np.nanmean(polar[spec.lats > 88.0]) == pytest.approx(100.0)
     assert p.granule_filter(type("G", (), {"name": "NSIDC0051_SEAICE_PS_N25km_202401_v2.0.nc"})())
     assert not p.granule_filter(type("G", (), {"name": "NSIDC0051_SEAICE_PS_N25km_20240131_v2.0.nc"})())
 
@@ -317,3 +334,45 @@ def test_sea_surface_temperature_drops_frozen_sea(monkeypatch):
     # and there is none here, so nothing is dropped by ice
     assert np.isfinite(cube[2]).all() and np.isfinite(cube[3]).all()
     assert "sea ice" in note and "beyond the ice record" in note
+
+
+def test_every_stored_grid_has_a_land_mask_resolution():
+    """SMAP salinity is stored at 0.25°: without a 0.25° mask its sea-only weighting was skipped."""
+    from megavir.ingest.products import PRODUCTS
+    from megavir.places.load import mask_resolutions
+
+    assert {float(p.target_res) for p in PRODUCTS.values()} <= set(mask_resolutions())
+    assert 0.25 in mask_resolutions()
+
+
+def test_a_missing_land_mask_is_resampled_from_a_stored_one():
+    from megavir.store import read_land_mask
+
+    lf = np.zeros((360, 720), np.float32)
+    lf[200, 300] = 1.0
+
+    class Conn:
+        def execute(self, sql, params=None):
+            class R:
+                def fetchone(self_inner):
+                    if params and params[1] == 0.5:
+                        from megavir.store import encode_array
+
+                        return {"data": encode_array(lf)}
+                    return None
+
+                def __iter__(self_inner):
+                    return iter([{"res_deg": 0.5}])
+
+            return R()
+
+    import megavir.store as store
+
+    store._mask_cache.clear()
+    g, fine = read_land_mask(Conn(), 0.25)
+    assert g.res == 0.25 and fine.shape == (720, 1440)
+    assert fine[400:402, 600:602].min() == 1.0 and fine.sum() == 4.0  # one 0.5° cell = 2 x 2 cells of 0.25°
+    store._mask_cache.clear()
+    g2, coarse = read_land_mask(Conn(), 1.0)
+    assert coarse.shape == (180, 360) and coarse[100, 150] == pytest.approx(0.25)
+    store._mask_cache.clear()

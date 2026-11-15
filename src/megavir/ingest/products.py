@@ -451,11 +451,16 @@ def _read_seaice(path: Path, begin: str):
         y = np.asarray(_find_dataset(h5, "y")[()], float)
     raw = squeeze_to_2d(raw)
     if scale is not None and raw.max() > 1.5:
-        conc = np.where(raw <= 250, raw * float(scale), np.nan)  # 251-255 are flags (pole hole, coast, land)
+        conc = np.where(raw <= 250, raw * float(scale), np.nan)  # 251-255 are flags
     elif raw.max() > 1.5:
         conc = np.where(raw <= 250, raw / 250.0, np.nan)
     else:
         conc = np.where((raw >= 0) & (raw <= 1.0), raw, np.nan)
+    if north and raw.max() > 1.5:
+        # 251: the disc around the North Pole the satellite never sees.  It is ice-covered, and NSIDC's
+        # own Sea Ice Index counts it as ice.  Left missing, it would bias early years low, because the
+        # disc shrank at each new sensor (1.2, 0.3, then 0.03 million km² in 1978-87, 1987-2007, since 2008).
+        conc = np.where(raw == 251, 1.0, conc)
     X, Y = np.meshgrid(x, y)
     from .regrid import polar_stereographic_to_latlon
 

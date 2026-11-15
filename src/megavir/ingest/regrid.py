@@ -197,14 +197,47 @@ def polar_stereographic_to_latlon(
     return lat_deg, lon_deg
 
 
+_TREES: dict[tuple, tuple] = {}
+
+
+def _unit_vectors(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
+    la, lo = np.deg2rad(lat), np.deg2rad(lon)
+    return np.column_stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)])
+
+
+def _pixel_tree(lat2: np.ndarray, lon2: np.ndarray):
+    """A nearest-neighbour tree of the pixel centres and their spacing (radians), cached per grid."""
+    from scipy.spatial import cKDTree
+
+    key = (lat2.shape, float(lat2.flat[0]), float(lat2.flat[-1]), float(lon2.flat[0]), float(lon2.flat[-1]))
+    if key not in _TREES:
+        ok = np.isfinite(lat2) & np.isfinite(lon2)
+        xyz = _unit_vectors(lat2[ok], lon2[ok])
+        along = _unit_vectors(lat2[:, :-1].ravel(), lon2[:, :-1].ravel()) - _unit_vectors(
+            lat2[:, 1:].ravel(), lon2[:, 1:].ravel()
+        )
+        spacing = float(np.nanmedian(np.linalg.norm(along, axis=1)))
+        if len(_TREES) > 4:
+            _TREES.clear()
+        _TREES[key] = (cKDTree(xyz), np.flatnonzero(ok.ravel()), spacing)
+    return _TREES[key]
+
+
 def bin_to_grid(
     lat: np.ndarray, lon: np.ndarray, field: np.ndarray, spec: GridSpec, min_count: int = 1
 ) -> np.ndarray:
     """Average every source pixel into the regular cell that contains its centre.
 
-    Used for projected grids (25 km polar stereographic sea ice), whose pixels are much smaller
-    than the 0.5° target cells near the poles; not conservative, documented as pixel binning.
+    Used for projected grids (25 km polar stereographic sea ice).  Away from the poles a 0.5°
+    cell holds several pixels and gets their mean.  Poleward of about 78° a cell is narrower
+    than one pixel, so many cells hold no pixel centre: those take the value of the pixel that
+    contains the cell's centre (the nearest pixel centre within 0.75 pixel spacings), so the high
+    Arctic is not left with holes.  Not conservative; documented as pixel binning.
     """
+    shape2 = np.shape(lat)
+    lat2 = np.asarray(lat, float)
+    lon2 = np.asarray(lon, float)
+    field2 = np.asarray(field, float)
     lat, lon, v = (np.asarray(a, float).ravel() for a in (lat, lon, field))
     ok = np.isfinite(lat) & np.isfinite(lon) & np.isfinite(v)
     i = np.floor((lat[ok] - (spec.lat0 - spec.res / 2)) / spec.res).astype(int)
@@ -215,4 +248,31 @@ def bin_to_grid(
     c = np.bincount(flat, minlength=spec.ny * spec.nx)
     with np.errstate(invalid="ignore", divide="ignore"):
         out = np.where(c >= min_count, s / c, np.nan)
+    if len(shape2) == 2 and min(shape2) > 1:
+        _fill_from_containing_pixel(out, c, lat2, lon2, field2, spec)
     return out.reshape(spec.ny, spec.nx).astype(np.float32)
+
+
+def _fill_from_containing_pixel(
+    out: np.ndarray, count: np.ndarray, lat2: np.ndarray, lon2: np.ndarray, field2: np.ndarray, spec: GridSpec
+) -> None:
+    """Cells with no valid pixel centre, inside the area the pixels cover: the containing pixel's value."""
+    good = np.isfinite(lat2)
+    if not good.any():
+        return
+    lo_lat, hi_lat = float(np.nanmin(lat2[good])), float(np.nanmax(lat2[good]))
+    rows = np.flatnonzero((spec.lats >= lo_lat) & (spec.lats <= hi_lat))
+    if rows.size == 0:
+        return
+    tree, index, spacing = _pixel_tree(lat2, lon2)
+    cells = (rows[:, None] * spec.nx + np.arange(spec.nx)[None, :]).ravel()
+    cells = cells[count[cells] == 0]
+    if cells.size == 0:
+        return
+    clat = spec.lats[cells // spec.nx]
+    clon = spec.lons[cells % spec.nx]
+    dist, k = tree.query(_unit_vectors(clat, clon), distance_upper_bound=0.75 * spacing)
+    near = np.isfinite(dist)
+    vals = field2.ravel()[index[k[near]]]
+    use = np.isfinite(vals)
+    out[cells[near][use]] = vals[use]
