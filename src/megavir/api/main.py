@@ -116,6 +116,13 @@ def variables():
         return service.catalog_with_status(conn)
 
 
+@app.get("/landing")
+def landing(lang: str = Query("en", max_length=5)):
+    """The landing page in one request: what the site holds and one live result."""
+    with connect() as conn:
+        return {**service.landing_summary(conn, lang), "cases": len(detective.CASES)}
+
+
 @app.get("/datasets")
 def datasets():
     return {

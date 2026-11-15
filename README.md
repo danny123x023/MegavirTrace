@@ -10,12 +10,19 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 
 ## What it does
 
-- **Explore:** pick a variable and a place (search about 39,000 places, 138 presets, or draw or type a box).
+- **Landing page** (`/`): what the site is in one screen, with a live result computed from the data (the
+  whole Earth's surface temperature, year by year, with its verdict and one stripe per year), the numbers
+  behind the site, the ways in, three detective cases and the NASA products used. It needs one request,
+  `GET /landing` (real measurements only; warmed by `precompute`). Old `/?v=…` links and embed cards
+  redirect to Explore.
+- **Explore** (`/explore`): pick a variable and a place (search about 39,000 places, 138 presets, or draw or type a box).
   You get a plain-language verdict, a chart with the trend and its 95% range, the statistics, and a cell map
   showing where inside the region the change is happening. The map switches between a flat 2D map and a 3D globe.
   Big regions, up to the whole Earth, get a map too: cells are merged into blocks (for example 2° from 0.5°)
   so the whole region fits, and zooming in loads full detail for the area in view, with the false-discovery
   test run over the cells shown.
+  Pointing at the map (or tapping it on a phone) shows the coordinates and, over a cell, its trend per decade,
+  whether it passes the false-discovery test, and the cell's size; over a measuring site, its name.
   It is a detailed street map (OpenStreetMap data): zoom in to streets, places and buildings in your own area,
   or use the location button. The trend colours fade as you zoom in and have a strength slider.
 - **Compare:** tests whether two regions' trends really differ, using the trend of their difference series.

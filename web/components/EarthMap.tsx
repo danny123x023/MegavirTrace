@@ -113,6 +113,57 @@ function compose(base: StyleSpecification | null, strength: number, globe: boole
   return { ...b, sources, layers: [...layers, ...top], projection: { type: globe ? "globe" : "mercator" } };
 }
 
+type Cursor = {
+  lng: number; lat: number; zoom: number; tapped: boolean;
+  cell?: { s: number; q: number | null; pass: boolean; color: string; la: number; lo: number; res: number };
+  site?: string;
+};
+type T = (s: string, vars?: Record<string, string | number>) => string;
+
+// 48.86° N, 2.35° E: more decimals as you zoom in (2 decimals ≈ 1 km, 4 ≈ 10 m)
+function coords(lat: number, lng: number, zoom: number, t: T) {
+  const d = zoom >= 12 ? 4 : zoom >= 7 ? 3 : 2;
+  const lon = ((((lng + 180) % 360) + 360) % 360) - 180;
+  return `${Math.abs(lat).toFixed(d)}° ${lat >= 0 ? t("N") : t("S")}, ${Math.abs(lon).toFixed(d)}° ${lon >= 0 ? t("E") : t("W")}`;
+}
+
+function readoutText(c: Cursor, units: string, t: T) {
+  const parts = [coords(c.lat, c.lng, c.zoom, t)];
+  if (c.cell) parts.push(`${fmtSigned(c.cell.s, 2)} ${t("{units} per decade", { units })}`, c.cell.pass ? t("passes the false-discovery test") : t("does not pass the false-discovery test"));
+  if (c.site) parts.push(c.site);
+  return parts.join(" · ");
+}
+
+const PIN = "M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21ZM12 7a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z";
+
+function Readout({ cursor: c, units, hasCells, faded }: { cursor: Cursor; units: string; hasCells: boolean; faded: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div className="map-readout" aria-hidden="true">
+      <div className="map-readout-pos">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d={PIN} /></svg>
+        {coords(c.lat, c.lng, c.zoom, t)}
+      </div>
+      {c.cell ? (
+        <div className="map-readout-cell">
+          <span className="map-readout-swatch" style={{ background: c.cell.color, opacity: faded && !c.cell.pass ? 0.4 : 1 }} />
+          <strong>{fmtSigned(c.cell.s, 2)} {t("{units} per decade", { units })}</strong>
+          <span />
+          <span className={c.cell.pass ? "ok-text" : "muted"}>
+            {c.cell.pass ? t("passes the false-discovery test") : t("does not pass the false-discovery test")}
+            {c.cell.q !== null && <> (q {c.cell.q < 0.001 ? "< 0.001" : `= ${fmt(c.cell.q, 2)}`})</>}
+          </span>
+          <span />
+          <span className="muted">{t("cell of {res}° around {where}", { res: fmt(c.cell.res, 2), where: coords(c.cell.la, c.cell.lo, 0, t) })}</span>
+        </div>
+      ) : hasCells ? (
+        <div className="map-readout-note muted">{t("No cell here: outside the region or no data.")}</div>
+      ) : null}
+      {c.site && <div className="map-readout-site">{t("Site")}: <strong>{c.site}</strong></div>}
+    </div>
+  );
+}
+
 export default function EarthMap({ outlines, cells, variable = "", units = "", dataArea, drawMode, onBox, height, points, detailRequest }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
@@ -121,7 +172,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
   const [globe, setGlobe] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [strength, setStrength] = useState(1);
-  const [hoverInfo, setHoverInfo] = useState<string>("");
+  const [cursor, setCursor] = useState<Cursor | null>(null);
   const [themeTick, setThemeTick] = useState(0);
   const [detailed, setDetailed] = useState(false); // street map shown (not just the outlines)
   const drawStart = useRef<maplibregl.LngLat | null>(null);
@@ -336,7 +387,7 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
       const color = Math.abs(s) < 1e-12 ? r.mid : s > 0 ? r.positive[k] : r.negative[k];
       feats.push({
         type: "Feature",
-        properties: { color, opacity: showRaw || cells.passes[i] ? 0.85 : 0.22, s, q: cells.q[i], pass: cells.passes[i] },
+        properties: { color, opacity: showRaw || cells.passes[i] ? 0.85 : 0.22, s, q: cells.q[i], pass: cells.passes[i], la, lo, res: cells.res },
         geometry: { type: "Polygon", coordinates: [[[lo - h, la - h], [lo + h, la - h], [lo + h, la + h], [lo - h, la + h], [lo - h, la - h]]] },
       });
     }
@@ -348,22 +399,42 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
     if (m?.getLayer("cells")) m.setPaintProperty("cells", "fill-opacity", cellOpacity(strength));
   }, [strength, styleTick]);
 
-  // ---- cell hover ------------------------------------------------------------------------------
+  // ---- what is under the pointer (or under a tap on touch screens) ----------------------------------
   useEffect(() => {
     const m = map.current;
     if (!m || !ready) return;
-    const move = (e: maplibregl.MapLayerMouseEvent) => {
-      const f = e.features?.[0];
-      if (!f) return;
-      const p = f.properties as { s: number; q: number | null; pass: boolean };
-      setHoverInfo(`${fmtSigned(Number(p.s), 2)} ${units} per decade · q = ${p.q === null ? "—" : fmt(Number(p.q), 2)} · ${String(p.pass) === "true" ? "passes" : "does not pass"} the false-discovery test`);
-      m.getCanvas().style.cursor = "crosshair";
+    let raf = 0;
+    const read = (e: maplibregl.MapMouseEvent, tapped: boolean) => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const layers = ["cells", "points"].filter((id) => m.getLayer(id));
+        const hits = layers.length ? m.queryRenderedFeatures(e.point, { layers }) : [];
+        const c = hits.find((f) => f.layer.id === "cells")?.properties;
+        const site = hits.find((f) => f.layer.id === "points")?.properties?.name;
+        setCursor({
+          lng: e.lngLat.lng, lat: e.lngLat.lat, zoom: m.getZoom(), tapped,
+          cell: c ? { s: Number(c.s), q: c.q == null ? null : Number(c.q), pass: String(c.pass) === "true", color: String(c.color), la: Number(c.la), lo: Number(c.lo), res: Number(c.res) } : undefined,
+          site: site ? String(site) : undefined,
+        });
+        m.getCanvas().style.cursor = c || site ? "crosshair" : "";
+      });
     };
-    const leave = () => { setHoverInfo(""); m.getCanvas().style.cursor = ""; };
-    m.on("mousemove", "cells", move);
-    m.on("mouseleave", "cells", leave);
-    return () => { m.off("mousemove", "cells", move); m.off("mouseleave", "cells", leave); };
-  }, [ready, units]);
+    let touched = 0; // after a tap the browser adds mouse events, ending with a "mouseout": keep the readout
+    const touch = () => { touched = Date.now(); };
+    const move = (e: maplibregl.MapMouseEvent) => read(e, false);
+    const tap = (e: maplibregl.MapMouseEvent) => read(e, true);
+    const out = () => {
+      if (Date.now() - touched < 1500) return;
+      cancelAnimationFrame(raf); setCursor(null); m.getCanvas().style.cursor = "";
+    };
+    const drag = () => setCursor((cur) => (cur?.tapped ? null : cur)); // a tapped readout goes when the map moves
+    m.on("touchstart", touch);
+    m.on("mousemove", move);
+    m.on("click", tap);
+    m.on("mouseout", out);
+    m.on("dragstart", drag);
+    return () => { cancelAnimationFrame(raf); m.off("touchstart", touch); m.off("mousemove", move); m.off("click", tap); m.off("mouseout", out); m.off("dragstart", drag); };
+  }, [ready]);
 
   // ---- draw a box ---------------------------------------------------------------------------------
   useEffect(() => {
@@ -441,7 +512,11 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
           </label>
         )}
       </div>
-      <div ref={box} className="map-box" style={height ? { height } : undefined} />
+      <div className="map-frame">
+        <div ref={box} className="map-box" style={height ? { height } : undefined} />
+        {cursor && <Readout cursor={cursor} units={units} hasCells={!!hasCells} faded={!showRaw} />}
+      </div>
+      <p className="visually-hidden" aria-live="polite">{cursor?.tapped ? readoutText(cursor, units, t) : ""}</p>
       {hasCells && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
           <div className="legend-ramp" aria-label={t("Colour scale")}>
@@ -473,7 +548,6 @@ export default function EarthMap({ outlines, cells, variable = "", units = "", d
             })}{" "}
             {t((shown as Exclude<CellMap, { skipped: string }>).caveat)} {t("Based on {basis}.", { basis: (shown as Exclude<CellMap, { skipped: string }>).basis })}
           </p>
-          <p className="small" aria-live="polite" style={{ margin: 0, minHeight: "1.3em" }}>{hoverInfo}</p>
         </div>
       )}
       {cells && "skipped" in cells && <p className="small muted">{t("Cell map:")} {cells.skipped}.</p>}

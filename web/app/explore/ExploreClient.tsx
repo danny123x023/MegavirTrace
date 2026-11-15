@@ -91,7 +91,7 @@ export default function ExploreClient() {
     if (mode.start) q.set("start", mode.start);
     if (mode.end) q.set("end", mode.end);
     // keep the URL shareable without a Next.js navigation (which would need the network)
-    window.history.replaceState(null, "", `/?${q.toString()}`);
+    window.history.replaceState(null, "", `/explore?${q.toString()}`);
   }, [variable, chosen, mode, varInfo, lang]);
 
   useEffect(() => { run(); }, [run]);

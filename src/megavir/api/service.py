@@ -762,6 +762,47 @@ def month_detail(conn, var_id: str, region_spec: dict, year: int, month: int) ->
     }
 
 
+# The landing page: what the site holds, and one live result (the whole Earth's surface temperature
+# change, year by year).  Warmed by `precompute` in both languages.
+LANDING_TREND = {"variable": "temp_change", "region": {"place": "preset:globe"}, "cell_map": False}
+
+
+def landing_summary(conn, lang: str) -> dict:
+    cat = catalog_with_status(conn)
+    real = [v for v in cat["variables"] if (v.get("data") or {}).get("kind") == "real"]
+    hero = None
+    try:
+        r = run_trend(conn, {**LANDING_TREND, "lang": lang})
+        if r["provenance"]["data_kind"] != "real":
+            raise AnalysisError("the landing page shows real measurements only")
+        s, st = r["series"], r["stats"]
+        hero = {
+            "analysis_id": r["id"],
+            "variable": r["variable"],
+            "region": r["region"]["name"],
+            "units": r["units"],
+            "labels": s["labels"],
+            "values": s["values"],
+            "trend_line": s["trend_line"],
+            "headline": r["verdict"]["headline"],
+            "per_decade": st["per_decade"]["sen"],
+            "significant": st["significant"],
+            "product": r["provenance"]["product"],
+            "doi": r["provenance"]["doi"],
+            "last_month": r["data"]["last_month"],  # the last year may be partial
+        }
+    except (AnalysisError, KeyError):
+        hero = None  # not loaded yet: the page shows the rest
+    return {
+        "variables": len(real),
+        "themes": [t for t in cat["themes"] if any(v["theme"] == t for v in real)],
+        "products": sorted({v["dataset_info"]["product"] for v in real}),
+        "first_month": min((v["data"]["first_month"] for v in real), default=None),
+        "last_month": max((v["data"]["last_month"] for v in real), default=None),
+        "hero": hero,
+    }
+
+
 def catalog_with_status(conn) -> dict:
     from megavir.catalog import PLANNED_DATASETS, PLANNED_VARIABLES, THEMES
 

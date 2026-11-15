@@ -147,7 +147,23 @@ export async function apiGet<T>(path: string, params?: Record<string, string | n
   const qs = params
     ? "?" + new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)])).toString()
     : "";
-  return handle<T>(await fetch(`/api${path}${qs}`, { signal, headers: adminHeaders(path) }));
+  const url = `/api${path}${qs}`;
+  const init = { signal, headers: adminHeaders(path) };
+  // Reading is safe to repeat: one retry after a dropped connection or a proxy/server error (a reused
+  // idle connection can be reset by the server just as it is reused).
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    await new Promise((r) => setTimeout(r, 300));
+    return handle<T>(await fetch(url, init));
+  }
+  if (res.status >= 500 && res.status !== 501) {
+    await new Promise((r) => setTimeout(r, 300));
+    if (!signal?.aborted) res = await fetch(url, init);
+  }
+  return handle<T>(res);
 }
 
 /** Requests that change something on the server (never answered from the offline copy). */

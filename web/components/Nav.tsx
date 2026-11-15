@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { type Lang, LANGS, useI18n } from "@/lib/i18n";
 
 const LINKS = [
-  { href: "/", label: "Explore" },
+  { href: "/explore", label: "Explore" },
   { href: "/compare", label: "Compare" },
   { href: "/related", label: "Related variables" },
   { href: "/start", label: "Start here" },

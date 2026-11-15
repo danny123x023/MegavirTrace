@@ -36,7 +36,7 @@ export default function EmbedCard() {
         {r.verdict.caveats[r.data.kind !== "real" ? 1 : 0]} Source: {r.provenance.source_badge} ({r.provenance.product}
         {r.provenance.doi ? `, doi:${r.provenance.doi}` : ""}). Checked by two independent tests corrected for year-to-year memory · fingerprint{" "}
         <code>{r.provenance.fingerprint.slice(0, 12)}</code> ·{" "}
-        <a href={`${origin}/?v=${r.variable.id}${r.region.id ? `&place=${encodeURIComponent(r.region.id)}` : `&bbox=${r.region.bbox.join(",")}`}`} target="_blank" rel="noopener">Open in MegavirTrace</a>
+        <a href={`${origin}/explore?v=${r.variable.id}${r.region.id ? `&place=${encodeURIComponent(r.region.id)}` : `&bbox=${r.region.bbox.join(",")}`}`} target="_blank" rel="noopener">Open in MegavirTrace</a>
       </p>
       <details className="small" style={{ marginTop: 8 }}>
         <summary>Embed this card</summary>

@@ -4,10 +4,10 @@
  * keeps its recent analyses on the device instead (lib/offline.ts).
  * Street map files (/api/basemap/*) have their own cache, capped at TILE_LIMIT entries: the places
  * you looked at stay viewable offline without filling the device. */
-const VERSION = "mt-v1";
+const VERSION = "mt-v2";
 const TILES = "mt-tiles-v1";
 const TILE_LIMIT = 2000;
-const SHELL = ["/", "/compare", "/related", "/start", "/cases", "/ask", "/methods", "/world.json", "/maplibre-gl-worker.mjs"];
+const SHELL = ["/", "/explore", "/compare", "/related", "/start", "/cases", "/ask", "/methods", "/world.json", "/maplibre-gl-worker.mjs"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

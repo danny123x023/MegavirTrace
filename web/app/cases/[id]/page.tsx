@@ -42,7 +42,7 @@ function StepChart({ step }: { step: CaseStep }) {
 }
 
 function exploreHref(q: Record<string, string | number>) {
-  return "/?" + new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString();
+  return "/explore?" + new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString();
 }
 
 export default function CasePage() {
@@ -164,7 +164,7 @@ export default function CasePage() {
             {t("Skills")}: {c.skills.join(" · ")}
           </p>
           <div className="row" style={{ marginTop: 14 }}>
-            <Link className="button primary" href={`/?v=${c.variables[0]?.id ?? ""}`}>{t("Investigate your own area")}</Link>
+            <Link className="button primary" href={`/explore?v=${c.variables[0]?.id ?? ""}`}>{t("Investigate your own area")}</Link>
             {c.next && <Link className="button" href={`/cases/${c.next.id}`}>{t("Next case")}: {c.next.title} →</Link>}
           </div>
         </Panel>

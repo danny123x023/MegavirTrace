@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   // AI answers can take several tool rounds; the default proxy limit (30 s) would cut them off
   experimental: { proxyTimeout: 120_000 },
+  // Explore lived at "/" before the landing page: shared links and embed cards on other sites keep working
+  async redirects() {
+    return ["v", "place", "bbox"].map((key) => ({ source: "/", has: [{ type: "query" as const, key }], destination: "/explore", permanent: false }));
+  },
   async rewrites() {
     const api = [{ source: "/api/:path*", destination: `${BACKEND}/:path*` }];
     if (process.env.NODE_ENV !== "development") return api;

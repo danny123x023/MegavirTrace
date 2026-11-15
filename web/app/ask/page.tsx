@@ -133,7 +133,7 @@ export default function AskPage() {
       {status && !status.enabled && (
         <p className="error" role="note">
           The AI scientist is switched off on this server (no AI service is configured). Everything else works without it:{" "}
-          <Link href="/">explore</Link> or <Link href="/compare">compare</Link> any place.
+          <Link href="/explore">explore</Link> or <Link href="/compare">compare</Link> any place.
         </p>
       )}
 

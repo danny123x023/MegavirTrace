@@ -104,7 +104,7 @@ export default function StartPage() {
         </div>
         <p className="hint">
           {t("Pick one to narrow the suggestions, or leave it to see them all.")} {t("Somewhere specific?")}{" "}
-          <Link href="/">{t("Explore")}</Link> {t("searches every city, country and state, or lets you draw a box on the map.")}
+          <Link href="/explore">{t("Explore")}</Link> {t("searches every city, country and state, or lets you draw a box on the map.")}
         </p>
       </section>
 
@@ -117,7 +117,7 @@ export default function StartPage() {
               <p>{varText(v, lang, "why_it_can_trend")}</p>
               <div className="row small">
                 {v.data ? (
-                  <Link className="card-link" href={`/?v=${v.id}${placeQuery}`}>{t("Explore it")} →</Link>
+                  <Link className="card-link" href={`/explore?v=${v.id}${placeQuery}`}>{t("Explore it")} →</Link>
                 ) : (
                   <span className="muted">{t("Not loaded yet")}</span>
                 )}
@@ -152,7 +152,7 @@ export default function StartPage() {
                 <tbody>
                   {scan.results.map((r) => (
                     <tr key={r.variable}>
-                      <td>{r.analysis_id ? <Link href={`/?v=${r.variable}${placeQuery}`}>{r.name}</Link> : r.name}{r.data_kind && r.data_kind !== "real" ? ` (${r.data_kind})` : ""}</td>
+                      <td>{r.analysis_id ? <Link href={`/explore?v=${r.variable}${placeQuery}`}>{r.name}</Link> : r.name}{r.data_kind && r.data_kind !== "real" ? ` (${r.data_kind})` : ""}</td>
                       <td>{r.per_decade !== undefined ? `${fmtSigned(r.per_decade)} ${r.units}` : "—"}</td>
                       <td>{r.q !== undefined ? fmt(r.q, 2) : "—"}</td>
                       <td style={{ textAlign: "left" }}>{r.error ? <span className="muted">{r.error}</span> : r.passes_fdr ? t("Changing (passes)") : r.significant ? t("Significant alone, not after control") : t("No clear trend")}</td>
