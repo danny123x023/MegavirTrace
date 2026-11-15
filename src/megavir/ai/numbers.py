@@ -439,11 +439,28 @@ def _word_hits(low: str, words: list[str]) -> list[tuple[int, str]]:
     return out
 
 
+# a negation ends where a new clause starts: "it shows the trend since 1980, not when warming began"
+# negates "when", not "warming" (a correct answer was replaced by the plain verdict for this)
+CLAUSE_WORDS = {
+    "en": {"when", "where", "why", "how", "what", "which", "who", "whether", "if", "until", "because",
+           "while", "though", "although"},
+    "es": {"cuándo", "cuando", "dónde", "donde", "qué", "porque", "cómo", "si", "hasta", "aunque",
+           "mientras"},
+}  # fmt: skip
+
+
 def _negated(low: str, pos: int, lang: str) -> bool:
-    """A negation among the three words before position ``pos`` ("is not rising", "no ha subido")."""
+    """A negation among the three words before position ``pos`` ("is not rising", "no ha subido"),
+    unless a new clause starts between the two ("not when warming began")."""
     before = re.findall(r"[\w']+", low[:pos])[-3:]
     negs = NEGATIONS.get(lang, NEGATIONS["en"])
-    return any(w in negs or w.endswith("n't") for w in before)
+    stops = CLAUSE_WORDS.get(lang, CLAUSE_WORDS["en"])
+    for w in reversed(before):
+        if w in stops:
+            return False
+        if w in negs or w.endswith("n't"):
+            return True
+    return False
 
 
 def _mentions(low: str, names: list[str]) -> bool:

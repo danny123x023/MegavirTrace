@@ -226,3 +226,17 @@ def test_percent_quantities_use_percentage_points_and_never_percent_per_decade()
         assert not res.ok and res.unmatched, bad
     # a made-up rate written in percentage points is still caught as a rate
     assert not _check("The Arctic is falling by about 4.7 percentage points per decade.", r).ok
+
+
+def test_a_negation_does_not_reach_across_a_new_clause():
+    """'not when warming began' negates 'when': this correct sentence once replaced a whole answer."""
+    r = _trend_result()
+    ok = "The record runs from 1980 to 2025, so it shows the trend since 1980 only, not when warming began."
+    assert _check(ok, r).ok
+    assert _check("It does not say why the Earth is warming.", r).ok
+    # real denials are still caught
+    for bad in ("The whole Earth is not warming.", "The Earth isn't warming at all.", "There is no warming."):
+        res = _check(bad, r)
+        assert not res.ok and res.direction_errors, bad
+    assert _check("No dice por qué se está calentando la Tierra.", r, lang="es").ok
+    assert not _check("La Tierra no se está calentando.", r, lang="es").ok
