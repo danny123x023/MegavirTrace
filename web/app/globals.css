@@ -338,6 +338,8 @@ table.data th { font-weight: 600; color: var(--text-secondary); background: var(
 table.data th:first-child, table.data td:first-child { text-align: left; }
 table.data tbody tr:hover { background: var(--surface-2); }
 .table-scroll { position: relative; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+/* a chart's table view: clear of the title and buttons above it */
+figcaption + .table-scroll { margin-top: 10px; }
 
 /* ---- map ---------------------------------------------------------------------------- */
 .map-box {
