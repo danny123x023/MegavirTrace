@@ -101,7 +101,9 @@ def test_years_use_only_the_calendar_months_observed_here():
     assert len(s.y) == 24  # every year has all 8 observed months
     np.testing.assert_allclose(s.y, np.nanmean(np.where(dark, np.nan, vals)[:12]), atol=1e-9)
     vals2 = vals.copy()
-    vals2[np.flatnonzero(~dark)[:2]] = np.nan  # 2001 keeps 6 of its 8 observed months: below ceil(10/12 x 8) = 7
+    vals2[np.flatnonzero(~dark)[:2]] = (
+        np.nan
+    )  # 2001 keeps 6 of its 8 observed months: below ceil(10/12 x 8) = 7
     assert build_series(idx, vals2, "annual").labels[0] == "2002"
     tot = build_series(idx, np.where(dark, np.nan, 10.0), "annual", agg="sum")
     np.testing.assert_allclose(tot.y, 80.0)  # a total over the 8 observed months

@@ -190,7 +190,10 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "masks":
         from megavir.places.load import load_land_masks
 
-        print("land share of Earth's area:", load_land_masks(conn, _raw(), tuple(args.res) if args.res else None))
+        print(
+            "land share of Earth's area:",
+            load_land_masks(conn, _raw(), tuple(args.res) if args.res else None),
+        )
     elif args.cmd == "synthetic":
         from .synthetic import build_synthetic
 
