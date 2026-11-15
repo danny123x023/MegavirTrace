@@ -46,9 +46,14 @@ For a region R (a polygon or a box), each grid cell *i* gets the weight
 w_i = f_i · cos φ_i · m_i,
 
 where f_i is the fraction of the cell inside R (from exact polygon intersection) and m_i is the land or sea
-fraction for land-only or sea-only variables. The monthly regional value is the weighted mean over valid
-cells. The *coverage* is the share of the region's weight that had data. Months with coverage below 50% are
-treated as missing, and the lowest coverage used is reported as a caveat.
+fraction for land-only or sea-only variables. The monthly regional value is formed from anomalies, as for
+GISTEMP and HadCRUT (Hansen & Lebedeff 1987; Jones et al. 1999): each cell's departure from its own mean for that
+calendar month is averaged over the cells with data, and the weighted mean of the cells' calendar-month means is
+added back. A change in which part of the region has data then does not show up as a trend: for chlorophyll in the
+North China Plain preset, where coverage ranges from 11% to 88%, averaging raw values gave +0.044 mg m⁻³ per decade
+and anomalies give −0.065 (neither significant). Where every cell has data the two are identical. The *coverage*
+is the share of the region's weight that had data. Months with coverage below 50% are treated as missing, and the
+lowest coverage used is reported as a caveat.
 
 Monthly values become:
 - **yearly values:** a year needs at least 10 of 12 months, and its value is the 12-month climatological mean
@@ -89,7 +94,9 @@ Because r₁ is itself estimated, a normal reference for Z is too eager: about 8
 n = 20, whereas an oracle that knows r₁ gives 4–5%. We therefore refer Z to a t distribution with the same
 n_eff − 2 degrees of freedom as the least-squares test.
 
-**Sen's slope** is the headline rate, with Gilbert's (1987) interval computed from the corrected Var(S).
+**Sen's slope** is the headline rate, with Gilbert's (1987) interval computed from the corrected Var(S) and the
+same t quantile as the Mann–Kendall test it inverts. With the normal quantile the interval was narrower than the
+test (87–92% coverage at r₁ = 0.5), and a few "no clear trend" verdicts showed a 95% range that excluded zero.
 
 **Agreement rule.** "Significant" requires p < 0.05 in both tests, and the least-squares slope, Sen's slope
 and S must have the same sign.
@@ -196,7 +203,7 @@ never part of the trend tests.
 | Exact AR(1) Var(S) vs 6,000 simulated series | Within 6% (the Monte Carlo error) |
 | False alarms, 2,000 AR(1) series per setting, n = 20 and 30 | 4.0–4.1% at r₁ = 0.3 (target ≤ 5%); 4.4–4.8% at 0.5 (target ≤ 7%); 5.0–5.5% at 0.7 (target ≤ 6%); 5.8–6.8% at 0.9 (see Limitations) |
 | Monthly views: month-to-month memory 0.5 plus a year-to-year swing, 25 years, 1,000 series | 2.0% with an uncorrelated swing, 4.0% with persistence 0.5 (target ≤ 7%); the earlier one-month correction gave 18–31% |
-| 95% interval coverage of a synthetic trend | 95–97.5% |
+| 95% interval coverage of a synthetic trend (Sen's interval, testable records) | 95–97.5% at r₁ ≤ 0.3; 93–96% at 0.5 (was 87.5–92% with the normal quantile); 85–95% at 0.7 |
 | Difference test, correlation −0.5 to 0.95 | 3.7–4.8% false alarms |
 | Moves together: unrelated series sharing a season and a trend, 25 lags searched | ≤ 3.5% false claims; a real 3-month lead found at the right lag every time |
 | "Speeding up" claims for a straight trend with AR(1) noise, n = 15–45 | ≤ 3.3% at r₁ = 0.3, ≤ 4.8% at r₁ = 0.5; real acceleration found in > 90% of 45-year records |
@@ -216,7 +223,8 @@ IMERG rainfall is checked the same way once it is imported (`megavir-ingest giov
 
 A trend is not a cause. Records of 20–25 years detect only large trends against year-to-year variability, and
 the verdict says so. Reanalysis and land-model variables (MERRA-2, GLDAS) are model estimates constrained by
-observations. Coverage changes can bias regional means, which is why coverage is reported. The AR(1) model may
+observations. Averaging anomalies keeps coverage changes from creating trends, but a region with little coverage
+is still represented only by its observed part, which is why coverage is reported. The AR(1) model may
 understate long-memory variability (for example deep soil moisture or ocean heat), so fragile and borderline
 results should be read with care. Its blind spot is a mix of fast and slow noise: month-to-month memory 0.5
 plus a slow yearly swing with persistence 0.7 gives 7.7% false alarms in 25-year records, and very persistent
@@ -228,8 +236,10 @@ instead of giving a verdict.
 
 - Benjamini, Y. & Hochberg, Y. (1995). JRSS B 57, 289–300. doi:10.1111/j.2517-6161.1995.tb02031.x
 - Gilbert, R. O. (1987). *Statistical Methods for Environmental Pollution Monitoring*. Van Nostrand Reinhold.
+- Hansen, J. & Lebedeff, S. (1987). *J. Geophys. Res.* 92, 13345–13372. doi:10.1029/JD092iD11p13345
 - Hamed, K. H. & Rao, A. R. (1998). A modified Mann–Kendall trend test for autocorrelated data. *J. Hydrol.* 204, 182–196.
 - Hirsch, R. M., Slack, J. R. & Smith, R. A. (1982). *Water Resour. Res.* 18, 107–121. doi:10.1029/WR018i001p00107
+- Jones, P. D., New, M., Parker, D. E., Martin, S. & Rigor, I. G. (1999). *Rev. Geophys.* 37, 173–199. doi:10.1029/1999RG900002
 - Lenssen, N. et al. (2019). *J. Geophys. Res. Atmos.* 124, 6307–6326. doi:10.1029/2018JD029522
 - Loomis, B. D., Luthcke, S. B. & Sabaka, T. J. (2019). *J. Geodesy* 93, 1381–1398. doi:10.1007/s00190-019-01252-y
 - Snyder, J. P. (1987). *Map Projections: A Working Manual*. USGS Professional Paper 1395.

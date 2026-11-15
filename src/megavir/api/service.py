@@ -35,7 +35,7 @@ from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
 from megavir.places.geometry import apply_domain, cells_for
 from megavir.store import GridSpec, Version, active_versions, read_cells, read_land_mask
 
-ENGINE_VERSION = "2026.11-8"
+ENGINE_VERSION = "2026.11-9"
 MAX_MAP_CELLS = 40_000  # mapped cell by cell up to this many
 MAP_TARGET_CELLS = 20_000  # bigger regions: cells merged into blocks, at most this many
 
@@ -200,8 +200,12 @@ def _series_table(conn) -> None:
         _series_ready.add(key)
 
 
+SERIES_METHOD = "anomaly-mean-1"  # how region_series rows are formed: change it when region_mean changes
+
+
 def region_key(region: Region) -> str:
-    return hashlib.sha1(json.dumps(region.descriptor(), sort_keys=True, default=str).encode()).hexdigest()
+    blob = {"region": region.descriptor(), "method": SERIES_METHOD}
+    return hashlib.sha1(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def regional_monthly(conn, var_id: str, region: Region, need_cells: bool = False) -> RegionalData:
@@ -225,7 +229,7 @@ def regional_monthly(conn, var_id: str, region: Region, need_cells: bool = False
     cube = read_cells(conn, v, sub.ii, sub.jj)
     if not np.isfinite(cube).any():
         raise AnalysisError(_outside_message(var, v))
-    mean, cov = region_mean(cube, w)
+    mean, cov = region_mean(cube, w, v.months)
     conn.execute(
         """INSERT INTO region_series (version_id, region_key, mean, coverage) VALUES (%s, %s, %s, %s)
            ON CONFLICT (version_id, region_key) DO UPDATE SET mean = EXCLUDED.mean, coverage = EXCLUDED.coverage""",

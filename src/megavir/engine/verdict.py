@@ -33,6 +33,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "resembles the one before.",
         "nosig": "The range includes no change at all, so the ups and downs could explain it "
         "(Mann–Kendall p {p_mk}; least squares p {p_ols}).",
+        "nosig_edge": "The tests do not find this change clear enough to call it a trend (Mann–Kendall p {p_mk}; "
+        "least squares p {p_ols}).",
         "mixed": "One test finds a trend and the other does not (Mann–Kendall p {p_mk}; least squares "
         "p {p_ols}), or they disagree on its direction, so we do not call it significant.",
         "untestable": "Each {step} is so similar to the one before ({r1}) that the record holds too few "
@@ -89,6 +91,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "casualidad (Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}), teniendo en cuenta cuánto se "
         "parece cada {step} al anterior.",
         "nosig": "El rango incluye la ausencia de cambio, así que los altibajos podrían explicarlo "
+        "(Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}).",
+        "nosig_edge": "Las pruebas no encuentran este cambio lo bastante claro para llamarlo tendencia "
         "(Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}).",
         "mixed": "Una prueba encuentra tendencia y la otra no (Mann–Kendall p {p_mk}; mínimos cuadrados "
         "p {p_ols}), o no coinciden en la dirección, así que no la llamamos significativa.",
@@ -164,7 +168,9 @@ def fmt_signed(x: float, sig: int = 2, lang: str = "en") -> str:
 def fmt_p(p: float, lang: str = "en") -> str:
     if p < 0.001:
         return "< " + ("0,001" if lang == "es" else "0.001")
-    return "= " + fmt_num(p, sig=2, max_decimals=4, lang=lang)
+    # near the 5 % line two digits would print 0.050 for both 0.0496 and 0.0504
+    sig = 3 if 0.045 <= p < 0.055 else 2
+    return "= " + fmt_num(p, sig=sig, max_decimals=4, lang=lang)
 
 
 def fmt_pct(x: float) -> str:
@@ -256,7 +262,7 @@ def trend_verdict(
         status = "not_significant"
         headline = t["head_nosig"].format(**common)
         sentences.append(t["range"].format(**common))
-        sentences.append(t["nosig"].format(**common))
+        sentences.append(t["nosig" if lo <= 0 <= hi else "nosig_edge"].format(**common))
 
     if st.ols.testable:
         span = st.last - st.first
@@ -269,9 +275,10 @@ def trend_verdict(
         )
     if status in ("not_significant", "tests_disagree") and math.isfinite(st.years_needed):
         span_years = int(round(st.last - st.first + 1.0 / st.per_year))
-        if st.years_more > 0:
-            shown["n_star"] = str(int(math.ceil(st.years_needed)))
-            shown["more"] = str(int(st.years_more))
+        n_star = int(math.ceil(st.years_needed))
+        if n_star > span_years:
+            shown["n_star"] = str(n_star)
+            shown["more"] = str(n_star - span_years)  # so the three numbers always add up
             shown["span"] = str(span_years)
             sentences.append(
                 t["need_more"].format(n_star=shown["n_star"], more=shown["more"], span=shown["span"])

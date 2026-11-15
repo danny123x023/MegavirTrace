@@ -44,11 +44,20 @@ def month_label(idx: int) -> str:
 # --------------------------------------------------------------------------------------
 
 
-def region_mean(cube: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def region_mean(
+    cube: np.ndarray, weights: np.ndarray, months: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
     """Area-weighted mean per month and the share of the region's weight that had data.
 
     cube: (n_months, ...cells) with NaN for missing; weights: the cells' shape, already including
     cos(latitude), the fraction of each cell inside the region and the variable's land/sea mask.
+
+    With ``months`` (the absolute month of each row) the mean is formed from anomalies, as for
+    GISTEMP and HadCRUT (Hansen & Lebedeff 1987; Jones et al. 1999): each cell's departure from
+    its own mean for that calendar month is averaged over the cells with data, and the weighted
+    mean of the cells' calendar-month means is added back.  A change in which part of the region
+    has data (clouds, polar night, a new sensor) then no longer shows up as a trend.  Where every
+    cell has data the result equals the plain weighted mean.
     """
     w = np.asarray(weights, float).ravel()
     cube = np.asarray(cube)
@@ -57,17 +66,41 @@ def region_mean(cube: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, np.n
     if total <= 0:
         raise ValueError("region has no valid cells for this variable")
     n_t = cube.shape[0]
-    num = np.zeros(n_t)
-    sw = np.zeros(n_t)
     # a few months at a time: the whole Earth at 0.5° is 259,200 cells, too many for full copies
     step = max(1, 8_000_000 // max(1, cube.shape[1]))
+    clim = None
+    if months is not None:
+        cal = np.asarray(months, int) % 12
+        sums = np.zeros((12, cube.shape[1]))
+        counts = np.zeros((12, cube.shape[1]))
+        for t0 in range(0, n_t, step):
+            block = np.asarray(cube[t0 : t0 + step], float)
+            valid = np.isfinite(block)
+            for m in np.unique(cal[t0 : t0 + step]):
+                rows = cal[t0 : t0 + step] == m
+                sums[m] += np.where(valid[rows], block[rows], 0.0).sum(axis=0)
+                counts[m] += valid[rows].sum(axis=0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            clim = sums / counts  # each cell's mean for each calendar month (NaN: never observed)
+        has = np.isfinite(clim)
+        region_clim = np.full(12, np.nan)
+        for m in range(12):
+            wm = w[has[m]]
+            if wm.sum() > 0:
+                region_clim[m] = float(clim[m, has[m]] @ wm / wm.sum())
+    num = np.zeros(n_t)
+    sw = np.zeros(n_t)
     for t0 in range(0, n_t, step):
         block = np.asarray(cube[t0 : t0 + step], float)
+        if clim is not None:
+            block = block - clim[cal[t0 : t0 + step]]
         valid = np.isfinite(block)
         num[t0 : t0 + step] = np.where(valid, block, 0.0) @ w
         sw[t0 : t0 + step] = valid @ w
     with np.errstate(invalid="ignore", divide="ignore"):
         mean = num / sw
+    if clim is not None:
+        mean = mean + region_clim[cal]
     mean[sw == 0] = np.nan
     return mean, sw / total
 

@@ -405,14 +405,21 @@ def sen_slope(
     var_s: float,
     group: np.ndarray | None = None,
     alpha: float = ALPHA,
+    df: float | None = None,
 ) -> SenResult:
-    """Sen (1968) slope; interval from the (autocorrelation-corrected) variance of S (Gilbert 1987)."""
+    """Sen (1968) slope; interval from the (autocorrelation-corrected) variance of S (Gilbert 1987).
+
+    With ``df`` the interval uses the same Student t quantile as the Mann–Kendall test it
+    inverts (r1 is estimated, so the normal quantile gave intervals narrower than the test:
+    87–92 % coverage at r1 = 0.5).  ``df=None`` gives the textbook normal interval.
+    """
     slopes = np.sort(pairwise_slopes(t, y, group))
     N = slopes.size
     if N == 0:
         return SenResult(0.0, float("-inf"), float("inf"), float(np.median(y)))
     slope = float(np.median(slopes))
-    c = float(sps.norm.ppf(1 - alpha / 2) * np.sqrt(max(var_s, 0.0)))
+    q = sps.t.ppf(1 - alpha / 2, max(df, 1.0)) if df is not None else sps.norm.ppf(1 - alpha / 2)
+    c = float(q * np.sqrt(max(var_s, 0.0)))
     m1 = (N - c) / 2.0  # 1-based rank of the lower limit
     m2 = (N + c) / 2.0 + 1.0  # 1-based rank of the upper limit
     ranks = np.arange(1, N + 1)
@@ -683,7 +690,7 @@ def trend_test(
     """The agreement rule: significant only if both corrected tests pass and all signs agree."""
     ols = ols_trend(t, y, step=1.0 / per_year, alpha=alpha)
     mk = mann_kendall(t, y, r1=ols.r1, group=group, df=ols.df if ols.testable else None)
-    sen = sen_slope(t, y, mk.var_s_adj, group=group, alpha=alpha)
+    sen = sen_slope(t, y, mk.var_s_adj, group=group, alpha=alpha, df=ols.df if ols.testable else None)
     signs = {np.sign(ols.slope), np.sign(sen.slope), np.sign(mk.S)}
     agree = len(signs) == 1 and 0 not in signs
     significant = bool(ols.testable and ols.p < alpha and mk.p < alpha and agree)
@@ -719,7 +726,8 @@ def analyse_trend(
 
     span = float(t.max() - t.min()) + step
     n_star = years_to_detect(sen.slope, ols.resid_sd, ols.r1, per_year)
-    years_more = max(0.0, float(np.ceil(n_star - span))) if np.isfinite(n_star) else float("inf")
+    # the verdict shows ceil(n*) years needed and the record's length in whole years: their difference
+    years_more = max(0.0, float(np.ceil(n_star) - round(span))) if np.isfinite(n_star) else float("inf")
     eff, eff_label = size_against_noise(sen.slope, span - step, ols.resid_sd)
     rob = robustness(t, y, years, g)
     resid = y - (ols.intercept + ols.slope * t)

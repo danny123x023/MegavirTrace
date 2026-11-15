@@ -30,6 +30,24 @@ def test_region_mean_weights_and_coverage():
     assert cov[0] == pytest.approx(0.5)
 
 
+def test_changing_coverage_is_not_a_trend():
+    """A cold cell with data all along and a warm cell only in the second half: averaging raw values
+    makes a step; averaging each cell's anomaly (then adding back the regional normal) does not."""
+    months = np.arange(month_index(2001, 1), month_index(2020, 12) + 1)
+    cold = np.full(months.size, 10.0)
+    warm = np.where(months >= month_index(2011, 1), 20.0, np.nan)
+    cube = np.column_stack([cold, warm])
+    w = np.array([1.0, 1.0])
+    plain, _ = region_mean(cube, w)
+    assert plain[0] == pytest.approx(10.0) and plain[-1] == pytest.approx(15.0)
+    anom, cov = region_mean(cube, w, months)
+    np.testing.assert_allclose(anom, 15.0)  # the regional normal, without a step
+    assert cov[0] == pytest.approx(0.5) and cov[-1] == pytest.approx(1.0)
+    # with complete coverage both ways agree
+    full = np.column_stack([cold, np.full(months.size, 20.0)]) + np.sin(np.arange(months.size))[:, None]
+    np.testing.assert_allclose(region_mean(full, w, months)[0], region_mean(full, w)[0], atol=1e-9)
+
+
 def test_annual_needs_ten_months_and_is_unbiased_by_gaps():
     idx, vals = monthly(trend=0.0, noise=0.0)
     vals = vals.copy()
@@ -205,3 +223,47 @@ def test_related_verdict_wording():
     v = related_verdict(rel, "Rainfall", "Topsoil moisture (0–10 cm)", "Testland")
     assert v["headline"].startswith("No clear relationship between rainfall")
     assert "about 3 months later" in v["sentences"][0]
+
+
+def test_sen_range_uses_the_tests_t_reference():
+    """The interval inverts the Mann–Kendall test, which uses Student t: so must the interval."""
+    from megavir.engine.stats import mann_kendall, sen_slope
+
+    rng = np.random.default_rng(12)
+    t = np.arange(20) + 0.5
+    y = 0.03 * t + rng.normal(0, 0.3, 20)
+    mk = mann_kendall(t, y, r1=0.3, df=12.0)
+    z = sen_slope(t, y, mk.var_s_adj)
+    tt = sen_slope(t, y, mk.var_s_adj, df=12.0)
+    assert tt.slope == z.slope and tt.ci_low < z.ci_low and tt.ci_high > z.ci_high
+
+
+def test_no_clear_trend_never_says_the_range_includes_zero_when_it_does_not():
+    import dataclasses
+
+    st, var = _trend(trend=0.0, noise=1.0)
+    st = dataclasses.replace(
+        st,
+        significant=False,
+        sen=dataclasses.replace(st.sen, ci_low=0.001, ci_high=0.05),
+        mk=dataclasses.replace(st.mk, p=0.08),
+        ols=dataclasses.replace(st.ols, p=0.07),
+    )
+    v = trend_verdict(st, var, "Testland", "°C")
+    text = " ".join(v["sentences"])
+    assert v["status"] == "not_significant" and "includes no change" not in text and "clear enough" in text
+
+
+def test_p_values_near_the_line_are_not_rounded_onto_it():
+    from megavir.engine.verdict import fmt_p
+
+    assert fmt_p(0.0496) == "= 0.0496" and fmt_p(0.0504) == "= 0.0504"
+    assert fmt_p(0.31) == "= 0.31" and fmt_p(0.0004) == "< 0.001"
+
+
+def test_years_needed_sentence_adds_up():
+    st, var = _trend(var="rainfall", trend=0.002, noise=1.0)
+    v = trend_verdict(st, var, "Testland", "mm/year")
+    sh = v["shown"]
+    if "n_star" in sh:
+        assert int(sh["n_star"]) - int(sh["span"]) == int(sh["more"]) > 0
