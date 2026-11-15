@@ -54,9 +54,12 @@ PAIRINGS = {
 CAVEATS = [
     "Projections are what climate models simulate if emissions follow an assumed path; they are not forecasts.",
     "Five models and four sample years per scenario: a single year includes natural ups and downs, so read the ranges, not single values.",
-    "Each model's change is measured from its own 1995–2010 baseline years; the observed line is the change from the same years.",
+    "Each model's change is measured from its own baseline (the years 1995, 2000, 2005 and 2010); the observed line is the change from the observed mean over the baseline years the record has.",
+    "The projections are yearly means of the region's box, so the observed line is drawn only for yearly values.",
     "Projections are shown as context only; MegavirTrace's trend tests use observations alone.",
 ]
+BASELINE_SPAN = (1995, 2010)
+MIN_OBSERVED_BASELINE_YEARS = 4
 
 
 class ProjectionError(RuntimeError):
@@ -160,6 +163,8 @@ JOBS_SQL = """CREATE TABLE IF NOT EXISTS projection_job (
 
 
 def job_key(var: str, region: dict) -> str:
+    """The model results depend only on the variable and the region's box (the observed line is
+    added when a page asks, from that page's own analysis)."""
     cmip_var = PAIRINGS[var][0]
     return hashlib.sha256(
         json.dumps(
@@ -225,19 +230,11 @@ def start_job(connect, analysis: dict, values=None) -> dict:
             (key, len(tasks)),
         )
         conn.commit()
-    observed = {
-        "labels": analysis["series"]["labels"],
-        "t": analysis["series"]["t"],
-        "values": analysis["series"]["values"],
-        "mode": analysis["series"]["mode"],
-    }
-    threading.Thread(
-        target=_run, args=(connect, key, var, region, tasks, observed, values), daemon=True
-    ).start()
+    threading.Thread(target=_run, args=(connect, key, var, region, tasks, values), daemon=True).start()
     return {"key": key, "status": "running", "done": 0, "total": len(tasks)}
 
 
-def _run(connect, key, var, region, tasks, observed, values) -> None:
+def _run(connect, key, var, region, tasks, values) -> None:
     cmip_var, units, convert = PAIRINGS[var]
     got: dict[tuple[str, str, int], float] = {}
     try:
@@ -256,7 +253,7 @@ def _run(connect, key, var, region, tasks, observed, values) -> None:
                     if k % 5 == 0 or k == len(tasks):
                         with connect() as conn:
                             _set(conn, key, done=k)
-        result = summarise(got, var, units, observed)
+        result = summarise(got, var, units)
         with connect() as conn:
             _set(conn, key, status="done", result=json.dumps(result))
     except Exception as e:  # noqa: BLE001 - report the failure to the page
@@ -264,8 +261,44 @@ def _run(connect, key, var, region, tasks, observed, values) -> None:
             _set(conn, key, status="error", error=str(e)[:300])
 
 
-def summarise(got: dict, var: str, units: str, observed: dict) -> dict:
-    """Each model's change from its own baseline; ensemble median and range per scenario and year."""
+def observed_change(series: dict, var: str) -> tuple[dict | None, str | None]:
+    """The observed yearly values as change from their mean over the baseline period.
+
+    Drawn only for yearly values (the projections are yearly means).  The baseline is the mean of
+    every observed year in 1995–2010, at least four of them: IMERG rainfall starts in mid-2000, so
+    its baseline is 2001–2010 rather than two single years.  Returns (line, note).
+    """
+    if series.get("mode") != "annual":
+        return None, "The observed line is drawn with yearly values only, because the projections are yearly means."
+    tested = series.get("tested") or series
+    t = np.array([np.nan if x is None else x for x in tested["t"]], float)
+    v = np.array([np.nan if x is None else x for x in tested["values"]], float)
+    years = np.floor(t)
+    inb = (years >= BASELINE_SPAN[0]) & (years <= BASELINE_SPAN[1]) & np.isfinite(v)
+    if inb.sum() < MIN_OBSERVED_BASELINE_YEARS:
+        return None, (
+            f"The observed record has fewer than {MIN_OBSERVED_BASELINE_YEARS} years in "
+            f"{BASELINE_SPAN[0]}–{BASELINE_SPAN[1]}, the models' baseline period, so no observed line is drawn."
+        )
+    b = float(v[inb].mean())
+    ch = (v - b) if not rainfall_relative(var) else 100.0 * (v - b) / b
+    first, last = int(years[inb].min()), int(years[inb].max())
+    line = {
+        "t": [None if not np.isfinite(x) else float(x) for x in t],
+        "change": [None if not np.isfinite(x) else float(x) for x in ch],
+        "labels": list(tested["labels"]),
+        "baseline": [first, last],
+        "baseline_years": int(inb.sum()),
+    }
+    return line, f"Observed change from its {first}–{last} mean ({int(inb.sum())} years)."
+
+
+def summarise(got: dict, var: str, units: str, observed: dict | None = None) -> dict:
+    """Each model's change from its own baseline; ensemble median and range per scenario and year.
+
+    ``observed`` (a series with mode, labels, t and values) adds the observed line; the stored job
+    result leaves it out, and the API adds it from the page's own analysis.
+    """
     baselines = {}
     for m in MODELS:
         vals = [got[(m, "historical", y)] for y in BASELINE_YEARS if (m, "historical", y) in got]
@@ -286,20 +319,7 @@ def summarise(got: dict, var: str, units: str, observed: dict) -> dict:
             hi.append(float(np.max(ch)) if ch else None)
             n.append(len(ch))
         scen[sc] = {"label": SCENARIOS[sc], "median": med, "min": lo, "max": hi, "models": n}
-    # the observed series as change from the same baseline years
-    obs_t = np.array([x if x is not None else np.nan for x in observed["t"]], float)
-    obs_v = np.array([x if x is not None else np.nan for x in observed["values"]], float)
-    years = np.floor(obs_t)
-    base = obs_v[np.isin(years, BASELINE_YEARS) & np.isfinite(obs_v)]
-    obs = None
-    if observed["mode"] in ("annual", "season") and base.size >= 2:
-        b = float(base.mean())
-        ch = (obs_v - b) if not rainfall_relative(var) else 100.0 * (obs_v - b) / b
-        obs = {
-            "t": [None if not np.isfinite(x) else float(x) for x in obs_t],
-            "change": [None if not np.isfinite(x) else float(x) for x in ch],
-            "labels": observed["labels"],
-        }
+    obs, note = observed_change(observed, var) if observed else (None, None)
     return {
         "variable": var,
         "units": "%" if rainfall_relative(var) else units,
@@ -309,6 +329,7 @@ def summarise(got: dict, var: str, units: str, observed: dict) -> dict:
         "years": SAMPLE_YEARS,
         "scenarios": scen,
         "observed": obs,
+        "observed_note": note,
         "caveats": CAVEATS,
         "source": "NASA NEX-GDDP-CMIP6 (NASA Earth Exchange Global Daily Downscaled Projections, CMIP6), via NASA NCCS THREDDS",
     }

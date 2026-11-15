@@ -36,6 +36,21 @@ def test_changes_are_measured_from_each_models_own_baseline():
     assert r["observed"]["change"][-1] == pytest.approx(1.0)
 
 
+def test_observed_line_only_for_yearly_values_and_from_its_own_baseline_years():
+    # a summer series beside yearly model means would not be like for like
+    season = {"labels": ["2001 JJA"], "t": [2001.58], "values": [1.0], "mode": "season"}
+    obs, note = cmip6.observed_change(season, "air_temp")
+    assert obs is None and "yearly" in note
+    # IMERG starts in mid-2000: the baseline is the mean of 2001-2010, not two single years
+    years = list(range(2001, 2026))
+    rain = {"labels": [str(y) for y in years], "t": [y + 0.5 for y in years], "values": [1000.0] * 10 + [1100.0] * 15,
+            "mode": "annual"}  # fmt: skip
+    obs, note = cmip6.observed_change(rain, "rainfall")
+    assert obs["baseline"] == [2001, 2010] and obs["change"][-1] == pytest.approx(10.0)  # percent
+    short = {**rain, "labels": rain["labels"][8:], "t": rain["t"][8:], "values": rain["values"][8:]}
+    assert cmip6.observed_change(short, "rainfall")[0] is None  # only 2009-2010 in the baseline period
+
+
 def test_rainfall_changes_are_relative():
     obs = {"labels": [], "t": [], "values": [], "mode": "annual"}
     r = cmip6.summarise(fake_got(), "rainfall", "mm/year", obs)

@@ -387,7 +387,7 @@ def context_projections_start(body: ProjectionIn):
 
 @app.get("/context/projections")
 def context_projections(analysis_id: str = Query(min_length=8, max_length=64), lang: str = "en"):
-    from megavir.context.cmip6 import ProjectionError, check_region, get_job, job_key
+    from megavir.context.cmip6 import ProjectionError, check_region, get_job, job_key, observed_change
     from megavir.engine.verdict import projection_summary
 
     with connect() as conn:
@@ -401,7 +401,9 @@ def context_projections(analysis_id: str = Query(min_length=8, max_length=64), l
         return {"status": "not_started"}
     out = {k: job[k] for k in ("status", "done", "total", "error")}
     if job["status"] == "done" and job["result"]:
-        res = job["result"]
+        # the model results are shared by every analysis of this place; the observed line is this one's
+        obs, note = observed_change(analysis["series"], var)
+        res = {**job["result"], "observed": obs, "observed_note": note}
         out["result"] = res
         place = (
             service.in_phrase(analysis["region"]["name"], "box", lang)

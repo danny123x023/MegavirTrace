@@ -10,8 +10,8 @@ import Panel from "@/components/Panel";
 type Scenario = { label: string; median: (number | null)[]; min: (number | null)[]; max: (number | null)[]; models: number[] };
 type Result = {
   units: string; change_kind: string; models_used: string[]; baseline_years: number[]; years: number[];
-  scenarios: Record<string, Scenario>; observed: null | { t: (number | null)[]; change: (number | null)[]; labels: string[] };
-  caveats: string[]; source: string;
+  scenarios: Record<string, Scenario>; observed: null | { t: (number | null)[]; change: (number | null)[]; labels: string[]; baseline?: number[] };
+  observed_note?: string | null; caveats: string[]; source: string;
 };
 type Status = { status: string; done?: number; total?: number; error?: string | null; result?: Result; summary?: string[] };
 
@@ -126,6 +126,7 @@ export default function ProjectionsCard({ analysisId, variable }: { analysisId: 
               </tbody>
             </table>
           </div>
+          {r.observed_note && <p className="small muted" style={{ margin: 0 }}>{r.observed_note}</p>}
           <ul className="caveats">{r.caveats.map((c) => <li key={c}>{c}</li>)}</ul>
           <p className="small muted" style={{ margin: 0 }}>{t("Source:")} {r.source}. {lang === "es" ? "Modelos" : "Models"}: {r.models_used.join(", ")}.</p>
         </div>

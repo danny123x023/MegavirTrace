@@ -188,7 +188,11 @@ yearly daily file must be read on the NCCS THREDDS server (13–16 s per request
 
 Each file is subset to the region's box and averaged with cos(latitude) weights over the box and the year.
 Each model's change is measured from its own baseline (rainfall in percent), which removes model biases. The
-ensemble median and range are reported. The observed series is shown as its change from the same baseline years.
+ensemble median and range are reported. The observed series is shown as its change from its mean over every
+observed year in 1995–2010 (at least four; IMERG rainfall, which starts in mid-2000, uses 2001–2010), and only for
+yearly values, because the projections are yearly means. The model results are stored per variable and box; the
+observed line is added from the analysis being viewed, so a summer series or an older data version is never drawn
+beside them.
 
 The plain-language summary comes from fixed templates. For the Gulf Coast test box, around 2090 the models give
 +2.9 °C (range +1.4 to +4.9) under SSP2-4.5 and +4.9 °C (+3.7 to +5.6) under SSP5-8.5, compared with 1995–2010.
