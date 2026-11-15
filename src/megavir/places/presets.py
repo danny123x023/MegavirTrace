@@ -785,7 +785,7 @@ PRESETS: list[dict] = [
     },
     {
         "id": "china_loess_plateau",
-        "name": "Loess Plateau (greening)",
+        "name": "Loess Plateau, China",
         "bbox": [101, 34, 114, 41],
         "group": "Farms",
         "try": ["ndvi", "soil_moisture"],

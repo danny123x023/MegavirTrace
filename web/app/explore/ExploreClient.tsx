@@ -117,7 +117,7 @@ export default function ExploreClient() {
     <div>
       <h1>{t("Is this place really changing?")}</h1>
       <p className="lede">
-        {t("Pick what (a NASA variable) and where (search, a preset, or draw a box). MegavirTrace answers what is changing, where, how much, and whether it is significant: two independent tests must agree, after allowing for year-to-year memory.")}
+        {t("Pick what (a NASA variable) and where (search, a preset, or draw a box). MegavirTrace answers what is changing, where, how much, and whether it is significant: two different tests must agree, after allowing for year-to-year memory.")}
       </p>
 
       <div className="filters" role="search" aria-label={t("Choose what, where and how")}>

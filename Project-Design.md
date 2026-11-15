@@ -8,7 +8,7 @@ MegavirTrace gives anyone an honest, checkable answer to "is this place really c
 
 1. **The four questions, for any place, on real NASA data** (FR1, FR3, FR4).
 2. **Honest significance:**
-    - two independent tests must agree, corrected for year-to-year memory, with false alarms measured;
+    - two different tests must agree, corrected for year-to-year memory, with false alarms measured;
     - two regions are compared on their difference;
     - a result that isn't significant says how many more years of data would be needed.
 
@@ -33,7 +33,7 @@ MegavirTrace is a web tool that answers the challenge's four questions for any p
 **Design goals:**
 
 - **Real data, any region:** at least 10 NASA variables in 5 or more themes, including all six sources the challenge names (MODIS, OMI, AIRS, GPM, MERRA-2, GLDAS).
-- **Honest significance:** a trend is called significant only when two independent tests agree. False alarms are measured, not assumed.
+- **Honest significance:** a trend is called significant only when two different tests agree. False alarms are measured, not assumed.
 - **Plain language:** every verdict is written in everyday words that anyone can follow, and comes from fixed templates, never from AI.
 - **Traceable numbers:** every figure on screen can be recomputed from a downloaded notebook.
 

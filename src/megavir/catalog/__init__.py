@@ -496,8 +496,9 @@ VARIABLES: dict[str, Variable] = {
             fields=("T2M",),
             source_badge="MERRA-2",
             definition="The temperature of the air 2 metres above the ground, averaged over day and night.",
-            why_it_can_trend="Greenhouse gases trap more heat; land use, irrigation and cities also change local temperature.",
-            caveat="MERRA-2 is a reanalysis: a weather model kept close to observations, not a direct measurement.",
+            why_it_can_trend="Greenhouse gases trap more heat; changes in winds, clouds and soil moisture shift it from place to place.",
+            caveat="MERRA-2 is a reanalysis: a weather model kept close to observations, not a direct measurement. It has no "
+            "irrigation and no cities, so their local effects are missing.",
             rising_words=("warming", "cooling"),
         ),
         _v(
@@ -542,7 +543,8 @@ VARIABLES: dict[str, Variable] = {
             source_badge="AIRS · Aqua",
             definition="The temperature of the land surface itself (its 'skin'), seen from space by infrared, day and night averaged.",
             why_it_can_trend="Warming air, drying soil, lost vegetation and new pavement all heat the ground surface.",
-            caveat="Only cloud-free views are possible, so very cloudy months have fewer observations; 1° grid.",
+            caveat="Infrared needs at least partly clear skies (the microwave sounder helps see past some cloud), so very "
+            "cloudy months have fewer observations; 1° grid.",
             rising_words=("warming", "cooling"),
         ),
         _v(
@@ -606,8 +608,9 @@ VARIABLES: dict[str, Variable] = {
             source_badge="GLDAS",
             year_units="mm/year",
             definition="Water returned to the air by evaporation from soil and water and by plants breathing it out.",
-            why_it_can_trend="Heat, longer growing seasons, irrigation and drying soils change how much water goes back up.",
-            caveat="A land-model estimate driven by observations, not a direct measurement.",
+            why_it_can_trend="Heat, more or less rain and drying soils change how much water goes back up.",
+            caveat="A land-model estimate driven by observed weather, not a direct measurement. The model has no irrigation "
+            "and repeats the same yearly cycle of vegetation, so it cannot show irrigated fields or new forests.",
             rising_words=("returning more water to the air", "returning less water to the air"),
             decimals=1,
         ),
@@ -623,8 +626,9 @@ VARIABLES: dict[str, Variable] = {
             fields=("SoilMoi0_10cm_inst",),
             source_badge="GLDAS",
             definition="Water held in the top 10 cm of soil, as millimetres of water.",
-            why_it_can_trend="Less rain, more heat or more irrigation dry or wet the surface soil.",
-            caveat="A land-model estimate; it responds quickly to single storms.",
+            why_it_can_trend="Less rain or more heat dries the surface soil; more rain wets it.",
+            caveat="A land-model estimate driven by observed weather; it responds quickly to single storms, and it has no "
+            "irrigation.",
             rising_words=("getting wetter at the surface", "drying out at the surface"),
             decimals=1,
         ),
@@ -640,7 +644,8 @@ VARIABLES: dict[str, Variable] = {
             source_badge="GLDAS",
             definition="Water held in the top metre of soil, where most roots are, as millimetres of water.",
             why_it_can_trend="Long dry or wet spells and changes in evaporation build up slowly in deeper soil.",
-            caveat="A land-model estimate; deep layers change slowly, so years are strongly linked to each other.",
+            caveat="A land-model estimate driven by observed weather, with no irrigation or wells; deep layers change "
+            "slowly, so years are strongly linked to each other.",
             rising_words=("getting wetter underground", "drying out underground"),
             decimals=0,
         ),
@@ -805,7 +810,9 @@ VARIABLES: dict[str, Variable] = {
             agg="mean",
             fields=("toa_net_all_mon",),
             source_badge="CERES",
-            definition="Sunlight absorbed minus heat sent back to space, per square metre: above zero, the place is gaining energy.",
+            definition="Sunlight absorbed minus heat sent back to space, per square metre. For the whole Earth, above zero "
+            "means the planet is gaining energy; a single region is mostly balanced by heat that winds and currents carry "
+            "in or out (the tropics are above zero, the poles below).",
             why_it_can_trend="Greenhouse gases trap outgoing heat; changes in clouds, ice and haze change how much sunlight is absorbed.",
             caveat="Regional values include heat carried in and out by winds and currents; 1° grid.",
             rising_words=("taking in more energy", "taking in less energy"),
@@ -860,7 +867,8 @@ VARIABLES: dict[str, Variable] = {
             year_units="mm/year",
             definition="All rain and snow (as water) falling in a month, from satellites and rain gauges combined, back to 1983.",
             why_it_can_trend="A warmer atmosphere holds more water, and storm tracks and monsoons can shift. This record is about 17 years longer than the main rainfall record, so slow changes are easier to detect.",
-            caveat="Coarser (0.5°) than the main rainfall record and updated a few months late; rainfall varies a lot from year to year.",
+            caveat="Built from fewer satellites than the main rainfall record (both are stored on a 0.5° grid) and updated "
+            "a few months late; rainfall varies a lot from year to year.",
             rising_words=("getting wetter", "getting drier"),
             decimals=1,
         ),
@@ -955,7 +963,9 @@ VARIABLES: dict[str, Variable] = {
             fields=("TO3",),
             source_badge="MERRA-2",
             definition="How much ozone is in the whole column of air above a place, in Dobson units; most of it is high up, in the ozone layer that blocks harmful UV light.",
-            why_it_can_trend="Ozone-destroying chemicals (CFCs) thinned the layer, worst over Antarctica in spring; since they were banned in 1987 it has been slowly recovering.",
+            why_it_can_trend="Ozone-destroying chemicals (CFCs) thinned the layer, worst over Antarctica in spring. The "
+            "Montreal Protocol of 1987 phased them out (by 1996 in richer countries, 2010 everywhere), and the layer is "
+            "slowly recovering.",
             caveat="A reanalysis that assimilates satellite ozone measurements. The Antarctic ozone hole appears in September to November, so look at that season there.",
             rising_words=("seeing a thicker ozone layer", "seeing a thinner ozone layer"),
             decimals=1,

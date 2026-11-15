@@ -16,7 +16,8 @@ export const DIVERGING = {
 };
 
 // Variables where "more" reads naturally as blue (water); for the rest "more" is red.
-const POSITIVE_IS_BLUE = new Set(["rainfall", "downpour", "evapotranspiration", "topsoil_moisture", "soil_moisture", "land_water", "sea_level", "rainfall_long", "snow_water", "water_vapour", "cloud_cover"]);
+// "More" is drawn blue for water, ice and snow (gaining sea ice or snow is blue, losing it red), red for heat
+const POSITIVE_IS_BLUE = new Set(["rainfall", "downpour", "evapotranspiration", "topsoil_moisture", "soil_moisture", "land_water", "sea_level", "rainfall_long", "snow_water", "water_vapour", "cloud_cover", "sea_ice", "snow_cover"]);
 
 export function divergingFor(variable: string, dark: boolean) {
   const p = dark ? DIVERGING.dark : DIVERGING.light;

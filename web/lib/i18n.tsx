@@ -29,8 +29,8 @@ const ES: Record<string, string> = {
   "You are offline: showing results saved on this device.": "Sin conexión: se muestran resultados guardados en este dispositivo.",
   // explore
   "Is this place really changing?": "¿De verdad está cambiando este lugar?",
-  "Pick what (a NASA variable) and where (search, a preset, or draw a box). MegavirTrace answers what is changing, where, how much, and whether it is significant: two independent tests must agree, after allowing for year-to-year memory.":
-    "Elige qué (una variable de la NASA) y dónde (busca, usa una región predefinida o dibuja un recuadro). MegavirTrace responde qué está cambiando, dónde, cuánto y si es significativo: dos pruebas independientes deben coincidir, teniendo en cuenta la memoria de un año a otro.",
+  "Pick what (a NASA variable) and where (search, a preset, or draw a box). MegavirTrace answers what is changing, where, how much, and whether it is significant: two different tests must agree, after allowing for year-to-year memory.":
+    "Elige qué (una variable de la NASA) y dónde (busca, usa una región predefinida o dibuja un recuadro). MegavirTrace responde qué está cambiando, dónde, cuánto y si es significativo: dos pruebas distintas deben coincidir, teniendo en cuenta la memoria de un año a otro.",
   "Choose what, where and how": "Elige qué, dónde y cómo",
   What: "Qué",
   Where: "Dónde",
@@ -300,7 +300,7 @@ const ES: Record<string, string> = {
   "Cell map:": "Mapa de celdas:",
   "Map. Drag or use the arrow keys to move, plus and minus to zoom.": "Mapa. Arrastra o usa las flechas para moverte, y más y menos para acercar.",
   // GLOBE
-  "Ground truth: NASA GLOBE observations": "Verificación en tierra: observaciones GLOBE de la NASA",
+  "Ground observations: NASA GLOBE": "Observaciones en tierra: GLOBE de la NASA",
   "Show GLOBE ground observations": "Ver observaciones GLOBE en tierra",
   "Fetching GLOBE observations… (the first time can take a minute)": "Obteniendo observaciones GLOBE… (la primera vez puede tardar un minuto)",
   "Move together": "Se mueven juntos",

@@ -28,7 +28,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         # body
         "plain": "In short: {place} is {word}.",
         "range": "Best estimate {srate} {unit} per decade (95% range {lo} to {hi}), {period}.",
-        "agree_sig": "Two independent tests agree that a change this steady is unlikely to be chance "
+        "agree_sig": "Two different tests agree that a change this steady is unlikely to be chance "
         "(Mann–Kendall p {p_mk}; least squares p {p_ols}), after allowing for how much each {step} "
         "resembles the one before.",
         "nosig": "The range includes no change at all, so the ups and downs could explain it "
@@ -87,7 +87,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "down": "bajando",
         "plain": "En resumen: en {place} la tendencia es {word}.",
         "range": "Mejor estimación {srate} {unit} por década (rango del 95 %: {lo} a {hi}), {period}.",
-        "agree_sig": "Dos pruebas independientes coinciden en que un cambio tan constante difícilmente es "
+        "agree_sig": "Dos pruebas distintas coinciden en que un cambio tan constante difícilmente es "
         "casualidad (Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}), teniendo en cuenta cuánto se "
         "parece cada {step} al anterior.",
         "nosig": "El rango incluye la ausencia de cambio, así que los altibajos podrían explicarlo "

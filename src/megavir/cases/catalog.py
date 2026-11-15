@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-CASES_REV = 3
+CASES_REV = 4
 
 
 @dataclass(frozen=True)
@@ -147,8 +147,8 @@ CASES: tuple[Case, ...] = (
             Step(
                 "month",
                 "Was all of eastern Europe as extreme?",
-                "The same July over a region about 40 times larger. Big regions average out local extremes.",
-                "daily_high",
+                "The same July and the same measure over a region about 270 times larger. Big regions average out local extremes.",
+                "air_temp",
                 P("eastern_europe"),
                 year=2010,
                 month=7,
@@ -237,8 +237,8 @@ CASES: tuple[Case, ...] = (
         where="The Arctic and the whole Earth",
         story=(
             "Scientists have long expected the Arctic to warm faster than the planet as a whole: as snow and sea "
-            "ice melt, darker ground and open ocean absorb more sunlight, which warms them further. The idea is "
-            "called Arctic amplification."
+            "ice melt, darker ground and open ocean absorb more sunlight, and the shallow, stable Arctic air keeps "
+            "the extra warmth near the surface. The idea is called Arctic amplification."
         ),
         question="Do NASA's thermometer records show the Arctic pulling ahead, and by how much?",
         steps=(
@@ -292,7 +292,7 @@ CASES: tuple[Case, ...] = (
             Step(
                 "trend",
                 "Is the energy kept by the planet growing?",
-                "Net energy at the top of the atmosphere: incoming sunlight minus what goes back out. Above zero means Earth gains heat.",
+                "Net energy at the top of the atmosphere: incoming sunlight minus what goes back out. For the whole Earth, above zero means the planet gains heat.",
                 "energy_budget",
                 P("globe"),
             ),
@@ -313,8 +313,9 @@ CASES: tuple[Case, ...] = (
             ),
         ),
         takeaway=(
-            "A cause and its effects can be followed through different measurements: energy in, ocean heat, "
-            "air temperature. Agreement between independent records makes a conclusion stronger."
+            "Different records can be checked against each other: the energy the planet keeps, the sea surface and "
+            "the air. When independent measurements point the same way the picture is more convincing, but trends "
+            "alone do not show what caused them."
         ),
         skills=("linking variables", "satellite records"),
     ),
@@ -327,8 +328,9 @@ CASES: tuple[Case, ...] = (
         when="September 2012",
         where="The Arctic Ocean",
         story=(
-            "On 16 September 2012 Arctic sea ice shrank to the smallest area in the satellite record that began in "
-            "1979, about 3.4 million square kilometres. A strong August storm broke up ice that was already thin."
+            "On 16 September 2012 Arctic sea ice shrank to the smallest extent in the satellite record that began in "
+            "1979: about 3.4 million square kilometres of ocean had at least 15% ice cover. A strong August storm "
+            "broke up ice that was already thin."
         ),
         question="Was 2012 a one-off, or part of a long decline?",
         steps=(
@@ -409,8 +411,9 @@ CASES: tuple[Case, ...] = (
             ),
         ),
         takeaway=(
-            "Natural swings like El Niño add to the long-term trend for a year or two. A record set in an El Niño "
-            "year is the trend plus the swing, which is why later records come without one."
+            "Natural swings like El Niño add to the long-term trend for a year or two: a record set in an El Niño "
+            "year is the trend plus the swing. Because the trend keeps rising, later years can beat it even without "
+            "a strong El Niño."
         ),
         skills=("natural cycles", "unusual months", "trend vs swings"),
     ),
@@ -615,8 +618,9 @@ CASES: tuple[Case, ...] = (
             ),
         ),
         takeaway=(
-            "An event far away can set up one here, and the effects can last into the next year: dry forest "
-            "burns more easily."
+            "Records that line up in time are consistent with a link: El Niño often brings drought to the Amazon, and "
+            "dry forest burns more easily the next year. Timing alone does not prove a cause, though: a 2024 "
+            "attribution study found that climate change, more than El Niño, drove the 2023 drought."
         ),
         skills=("droughts", "natural cycles", "fire"),
     ),
@@ -696,7 +700,7 @@ CASES: tuple[Case, ...] = (
             Step(
                 "trend",
                 "Is the water under the land still falling?",
-                "Water stored on land, including groundwater, from GRACE, month by month.",
+                "Water stored on land (soil, rivers and groundwater together) from GRACE; the chart shows months, the test yearly means.",
                 "land_water",
                 P("northwest_india_aquifer"),
             ),
@@ -709,22 +713,24 @@ CASES: tuple[Case, ...] = (
             ),
             Step(
                 "trend",
-                "Where is the water going?",
-                "Evapotranspiration: water returned to the air by soil and plants, much of it from irrigated fields.",
-                "evapotranspiration",
+                "What would the weather alone do?",
+                "Soil water in NASA's GLDAS land model, which follows rain and sunshine but has no wells or irrigation. "
+                "The 2009 study used it the same way: what GRACE sees beyond the model points to groundwater.",
+                "soil_moisture",
                 P("northwest_india_aquifer"),
             ),
             Step(
                 "trend",
                 "Are the fields greener?",
-                "Vegetation greenness (NDVI) from MODIS: irrigated crops stay green.",
+                "Vegetation greenness (NDVI) seen by MODIS. Fields watered from wells can stay green when the rain fails, so greenness alone cannot show where the water comes from.",
                 "ndvi",
                 P("northwest_india_aquifer"),
             ),
         ),
         takeaway=(
-            "When the water under the ground falls while rainfall does not, the cause is on the ground: pumping. "
-            "Ruling out a suspect is as useful as finding one."
+            "If the water stored on land falls while the rain and the weather-driven model do not, the change is not "
+            "coming from the sky; the 2009 study traced it to pumping for irrigation. GRACE weighs all the water "
+            "together, so it cannot show the pumping itself, but ruling out a suspect is as useful as finding one."
         ),
         skills=("linking variables", "ruling out causes", "GRACE"),
     ),
@@ -790,7 +796,7 @@ CASES: tuple[Case, ...] = (
             Step(
                 "trend",
                 "Is the water around the lake still falling?",
-                "Water stored on land, including groundwater, from GRACE, month by month.",
+                "Water stored on land (soil, rivers and groundwater together) from GRACE; the chart shows months, the test yearly means.",
                 "land_water",
                 P("lake_chad"),
             ),
@@ -1028,7 +1034,7 @@ CASES: tuple[Case, ...] = (
             "forest and grassland to stop erosion. NASA satellite studies have found China among the countries "
             "greening fastest."
         ),
-        question="Is the plateau greener, and has it cost the soil its water?",
+        question="Is the plateau greener, and could more rain explain it?",
         steps=(
             Step(
                 "trend",
@@ -1039,23 +1045,24 @@ CASES: tuple[Case, ...] = (
             ),
             Step(
                 "trend",
-                "Is the soil drying as plants use more water?",
-                "Soil moisture in the top metre from NASA's GLDAS land model.",
-                "soil_moisture",
+                "Has it rained more?",
+                "Yearly rainfall over the plateau from NASA's GPM IMERG since 2001. More rain alone can green a dry land.",
+                "rainfall",
                 P("china_loess_plateau"),
             ),
             Step(
                 "compare",
                 "Greener than the Sahel?",
-                "The Sahel has re-greened since its droughts, mostly as the rains returned. Compare the two trends directly.",
+                "The Sahel has re-greened since its 1970s–80s droughts, largely as the rains returned, helped by farmers protecting trees. Compare the two trends directly.",
                 "ndvi",
                 P("china_loess_plateau"),
                 region_b=P("sahel"),
             ),
         ),
         takeaway=(
-            "Greening can come from people (planting) or nature (more rain). Comparing with a region where people "
-            "did not plant helps tell them apart."
+            "Greening can come from people (planting) or from nature (more rain). Checking the rain in the same place "
+            "is a first test, and another greening region shows how unusual the change is; no region is a true "
+            "control, so the satellite trend alone cannot prove the cause."
         ),
         skills=("causes", "comparing regions", "linking variables"),
     ),

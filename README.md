@@ -41,7 +41,7 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 - **Ask the AI scientist (optional):** the AI turns a question into engine runs, then explains the results.
   It never computes. Every number and direction word it writes is checked against the stored results, and if
   anything fails the check you see the template verdict instead.
-- **Ground truth from NASA GLOBE:** for temperature and rainfall, measurements by GLOBE schools and volunteers in
+- **Ground observations from NASA GLOBE:** for temperature and rainfall, measurements by GLOBE schools and volunteers in
   the same place are shown beside the series as monthly anomalies, with how well the two move together.
   Over Texas, 18 GLOBE sites track GISTEMP with r = 0.89. This is context only and never enters the trend tests.
 - **Climate projections (context):** for temperature and rainfall, what five NASA NEX-GDDP-CMIP6 models simulate

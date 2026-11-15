@@ -6,7 +6,7 @@
 
 MegavirTrace answers four questions for any region on Earth, for 16 NASA variables: what is changing, where,
 how much, and whether the change is significant. It is built around three commitments. Significance is
-claimed only when two independent tests agree after correction for serial correlation, and false alarms are
+claimed only when two different tests agree after correction for serial correlation, and false alarms are
 measured by Monte Carlo rather than assumed. Every number comes from one deterministic engine and can be
 recomputed from an exported notebook. The verdict is written from fixed templates, never by a language model.
 Against NASA's official GISTEMP global series, our pipeline reproduces the annual means with r = 0.9997 and

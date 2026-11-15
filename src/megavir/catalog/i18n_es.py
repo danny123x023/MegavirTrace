@@ -8,8 +8,8 @@ ES: dict[str, dict] = {
     "air_temp": {
         "name": "Temperatura del aire (2 m)",
         "definition": "La temperatura del aire a 2 metros del suelo, promediada entre el día y la noche.",
-        "why_it_can_trend": "Los gases de efecto invernadero retienen más calor; el uso del suelo, el riego y las ciudades también cambian la temperatura local.",
-        "caveat": "MERRA-2 es un reanálisis: un modelo del tiempo ajustado a observaciones, no una medición directa.",
+        "why_it_can_trend": "Los gases de efecto invernadero retienen más calor; los cambios en vientos, nubes y humedad del suelo lo reparten de un lugar a otro.",
+        "caveat": "MERRA-2 es un reanálisis: un modelo del tiempo ajustado a observaciones, no una medición directa. No tiene riego ni ciudades, así que faltan sus efectos locales.",
         "rising_words": ("al calentamiento", "al enfriamiento"),
     },
     "daily_high": {
@@ -30,7 +30,7 @@ ES: dict[str, dict] = {
         "name": "Temperatura de la superficie del suelo",
         "definition": "La temperatura de la propia superficie terrestre (su «piel»), vista desde el espacio por infrarrojos, promediando día y noche.",
         "why_it_can_trend": "El aire más cálido, el suelo más seco, la pérdida de vegetación y el asfalto nuevo calientan la superficie.",
-        "caveat": "Solo se puede observar sin nubes, así que los meses muy nublados tienen menos datos; malla de 1°.",
+        "caveat": "El infrarrojo necesita cielos al menos en parte despejados (la sonda de microondas ayuda a ver a través de algunas nubes), así que los meses muy nublados tienen menos datos; malla de 1°.",
         "rising_words": ("al calentamiento", "al enfriamiento"),
     },
     "temp_change": {
@@ -57,22 +57,22 @@ ES: dict[str, dict] = {
     "evapotranspiration": {
         "name": "Evapotranspiración",
         "definition": "El agua que vuelve al aire por evaporación del suelo y del agua y por la transpiración de las plantas.",
-        "why_it_can_trend": "El calor, las temporadas de crecimiento más largas, el riego y los suelos más secos cambian cuánta agua regresa al aire.",
-        "caveat": "Es una estimación de un modelo de superficie terrestre alimentado con observaciones, no una medición directa.",
+        "why_it_can_trend": "El calor, más o menos lluvia y los suelos más secos cambian cuánta agua regresa al aire.",
+        "caveat": "Es una estimación de un modelo de superficie terrestre alimentado con el tiempo observado, no una medición directa. El modelo no tiene riego y repite el mismo ciclo anual de vegetación, así que no puede mostrar campos regados ni bosques nuevos.",
         "rising_words": ("a devolver más agua al aire", "a devolver menos agua al aire"),
     },
     "topsoil_moisture": {
         "name": "Humedad del suelo superficial (0–10 cm)",
         "definition": "El agua contenida en los 10 cm superiores del suelo, en milímetros de agua.",
-        "why_it_can_trend": "Menos lluvia, más calor o más riego secan o humedecen la capa superficial del suelo.",
-        "caveat": "Es una estimación de modelo; responde rápido a tormentas sueltas.",
+        "why_it_can_trend": "Menos lluvia o más calor secan la capa superficial del suelo; más lluvia la humedece.",
+        "caveat": "Es una estimación de modelo alimentada con el tiempo observado; responde rápido a tormentas sueltas y no tiene riego.",
         "rising_words": ("a un suelo superficial más húmedo", "a un suelo superficial más seco"),
     },
     "soil_moisture": {
         "name": "Humedad del suelo (0–100 cm)",
         "definition": "El agua contenida en el primer metro de suelo, donde están la mayoría de las raíces, en milímetros de agua.",
         "why_it_can_trend": "Las rachas largas secas o húmedas y los cambios en la evaporación se acumulan lentamente en el suelo profundo.",
-        "caveat": "Es una estimación de modelo; las capas profundas cambian despacio, así que los años se parecen mucho entre sí.",
+        "caveat": "Es una estimación de modelo alimentada con el tiempo observado, sin riego ni pozos; las capas profundas cambian despacio, así que los años se parecen mucho entre sí.",
         "rising_words": ("a un subsuelo más húmedo", "a un subsuelo más seco"),
     },
     "land_water": {
@@ -143,7 +143,7 @@ ES: dict[str, dict] = {
     },
     "energy_budget": {
         "name": "Balance de energía de la Tierra (neto en la cima de la atmósfera)",
-        "definition": "La luz solar absorbida menos el calor devuelto al espacio, por metro cuadrado: por encima de cero, el lugar gana energía.",
+        "definition": "La luz solar absorbida menos el calor devuelto al espacio, por metro cuadrado. Para toda la Tierra, por encima de cero significa que el planeta gana energía; una región sola se equilibra sobre todo con el calor que vientos y corrientes llevan o traen (los trópicos están por encima de cero, los polos por debajo).",
         "why_it_can_trend": "Los gases de efecto invernadero retienen el calor saliente; los cambios en nubes, hielo y bruma cambian cuánta luz se absorbe.",
         "caveat": "Los valores regionales incluyen el calor que entra y sale con vientos y corrientes; malla de 1°.",
         "rising_words": ("a absorber más energía", "a absorber menos energía"),
@@ -171,7 +171,7 @@ ES: dict[str, dict] = {
         "name": "Precipitación de registro largo",
         "definition": "Toda la lluvia y la nieve (como agua) que cae en un mes, combinando satélites y pluviómetros, desde 1983.",
         "why_it_can_trend": "Una atmósfera más cálida contiene más agua, y las tormentas y los monzones pueden desplazarse. Este registro es unos 17 años más largo que el principal, así que los cambios lentos se detectan mejor.",
-        "caveat": "Es más grueso (0,5°) que el registro principal y se actualiza con unos meses de retraso; la lluvia varía mucho de un año a otro.",
+        "caveat": "Usa menos satélites que el registro principal (ambos se guardan en una malla de 0,5°) y se actualiza con unos meses de retraso; la lluvia varía mucho de un año a otro.",
         "rising_words": ("a más lluvia", "a menos lluvia"),
     },
     "water_vapour": {
@@ -212,7 +212,7 @@ ES: dict[str, dict] = {
     "ozone": {
         "name": "Capa de ozono (ozono total)",
         "definition": "Cuánto ozono hay en toda la columna de aire sobre un lugar, en unidades Dobson; casi todo está en lo alto, en la capa de ozono que frena los rayos UV dañinos.",
-        "why_it_can_trend": "Los químicos que destruyen el ozono (CFC) adelgazaron la capa, sobre todo sobre la Antártida en primavera; desde su prohibición en 1987 se recupera lentamente.",
+        "why_it_can_trend": "Los químicos que destruyen el ozono (CFC) adelgazaron la capa, sobre todo sobre la Antártida en primavera. El Protocolo de Montreal de 1987 los eliminó (en 1996 en los países ricos y en 2010 en todo el mundo), y la capa se recupera lentamente.",
         "caveat": "Es un reanálisis que asimila mediciones de ozono por satélite. El agujero de ozono antártico aparece de septiembre a noviembre, así que conviene mirar esa estación allí.",
         "rising_words": ("a una capa de ozono más gruesa", "a una capa de ozono más delgada"),
     },

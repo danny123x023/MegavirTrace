@@ -55,7 +55,7 @@ export default function GlobeCard({ analysisId, variable, satelliteLabel, onSite
 
   return (
     <Panel aria-labelledby="globe-h">
-      <h2 id="globe-h">Ground truth: NASA GLOBE observations</h2>
+      <h2 id="globe-h">Ground observations: NASA GLOBE</h2>
       <p className="small muted" style={{ marginTop: 0 }}>
         Measurements by schools and volunteers in the GLOBE Program, for the same place, shown beside the satellite series as monthly
         anomalies (each month compared with the same month in other years). Context only: they are not used in the trend tests.
