@@ -181,9 +181,14 @@ def _fake_call(answer_fn):
 def test_ai_answer_with_checked_numbers(client, fake_ai, monkeypatch):
     def good(card):
         rate = card["per_decade"]["sen"]
+        if card["significant"]:
+            head, expl = f"Testland is warming by about {rate:.2f} °C per decade.", "Both tests agree."
+        else:  # an honest answer for a trend the tests do not support
+            head = f"Testland shows no clear trend; the best estimate is {rate:+.2f} °C per decade."
+            expl = "The ups and downs could explain it."
         return {
-            "headline": f"Testland is warming by about {rate:.2f} °C per decade.",
-            "explanation": "Both tests agree. The data are synthetic.",
+            "headline": head,
+            "explanation": expl + " The data are synthetic.",
             "analysis_ids": [card["analysis_id"]],
             "follow_up_questions": [],
         }

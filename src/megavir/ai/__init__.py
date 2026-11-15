@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -27,7 +28,7 @@ from megavir.config import settings
 from megavir.store import connect
 
 from . import config
-from .numbers import allowed_numbers, check_text
+from .numbers import Facts, add_ratios, check_text, facts_from
 
 log = logging.getLogger("megavir.ai")
 
@@ -166,7 +167,8 @@ TOOLS = [
     {
         "name": "run_trend_analysis",
         "description": "Run the deterministic trend engine for one variable in one region. Returns an analysis id and the stored statistics. "
-        "mode: annual (default), season (with season DJF/MAM/JJA/SON) or monthly.",
+        "mode: leave it out to use the variable's usual view (yearly for most, monthly for gappy records); "
+        "or annual, season (with season DJF/MAM/JJA/SON) or monthly. Monthly views are tested on yearly means.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -406,8 +408,9 @@ SYSTEM = """You are the AI Earth scientist inside MegavirTrace, a tool that tell
 Rules you must follow:
 - You never compute anything. All numbers come from the tools, which run MegavirTrace's deterministic trend engine. Copy numbers exactly as the tools give them (you may round to fewer digits). Never convert units, never calculate differences, totals, percentages or per-century values yourself.
 - Call run_trend_analysis, compare_regions or scan_region before saying anything about a trend. Name the place directly (region.place_name, as the visitor wrote it); the tool looks it up and tells you which place it used. Use find_places only if a name was not found or the place used is not the one meant. If the question needs several analyses, ask for all of them at once, in the same turn. If a tool returns an error, say what is missing instead of guessing.
-- "Significant" means both corrected tests agree. Do not call a trend significant unless the tool says significant: true. A non-significant result is still interesting: say how many more years would be needed when the tool gives it.
-- A trend is not a cause. Never claim a cause; you may say what scientists commonly consider, marked clearly as context, not as a finding.
+- "Significant" means both corrected tests agree. Use the word only in that sense, and only when the tool says significant: true. Say a place is rising, falling, warming, drying and so on only when the trend is significant; otherwise say there is no clear trend and give the best estimate as an estimate. A non-significant result is still interesting: say how many more years would be needed when the tool gives it.
+- A trend is not a cause. Do not explain why something changed, and do not add facts that are not in the tool results (causes, events, numbers or years from memory). You may say that a trend alone cannot show the cause.
+- Every number and year you write, also in follow_up_questions, is checked against the tool results; a number that is not there, or a direction the tests do not support, means your answer is replaced by the plain computed verdict.
 - If the data are test or synthetic data, say so plainly.
 - Write in plain, everyday words for someone with no science background. Short sentences. Answer in the visitor's language: {lang}.
 - Keep it short: the page also shows each result card with its numbers. Final answer: JSON with headline (one sentence), explanation (one or two short paragraphs, at most 120 words in total), analysis_ids (the ids you used), follow_up_questions (up to 3 short questions)."""
@@ -681,22 +684,51 @@ def test_key(p: str, key: str | None = None, model: str | None = None) -> dict:
 # --------------------------------------------------------------------------------------
 
 
+def _name_forms(name: str) -> list[str]:
+    """'the Arctic (north of 66.5°N)' -> the full name, 'the Arctic', 'Arctic'."""
+    out = [name]
+    short = re.sub(r"\s*\(.*?\)\s*", " ", name).strip()
+    out.append(short)
+    for article in ("the ", "el ", "la ", "los ", "las "):
+        if short.lower().startswith(article):
+            out.append(short[len(article) :])
+    return [n for n in dict.fromkeys(out) if len(n) >= 3]
+
+
 def _directions(analyses: dict) -> list[dict]:
     out = []
     for r in analyses.values():
         if r["kind"] == "trend":
-            names = [r["region"]["name"], r["variable"]["name"].split(" (")[0]]
-            out.append({"names": names, "direction": r["stats"]["direction"]})
+            var = r["variable"]
+            names = _name_forms(r["region"]["name"]) + _name_forms(var["name"])
+            es = (var.get("i18n") or {}).get("es") or {}
+            if es.get("name"):
+                names += _name_forms(es["name"])
+            out.append(
+                {
+                    "names": names,
+                    "direction": r["stats"]["direction"],
+                    "significant": bool(r["stats"].get("significant")),
+                    "status": r["verdict"].get("status"),
+                }
+            )
     return out
 
 
 def verify(answer: dict, analyses: dict, lang: str) -> dict:
+    """Check every number and direction in the answer, follow-up questions included (tutor mode
+    puts its guidance there), against the analyses it cites."""
     cited = [a for a in answer.get("analysis_ids", []) if a in analyses] or list(analyses)
-    allowed: list[float] = []
+    facts = Facts()
     for aid in cited:
-        allowed += allowed_numbers(analyses[aid])
-    text = f"{answer.get('headline', '')}\n{answer.get('explanation', '')}"
-    res = check_text(text, allowed, _directions({a: analyses[a] for a in cited}), lang)
+        facts.extend(facts_from(analyses[aid]))
+    add_ratios(facts)
+    questions = answer.get("follow_up_questions") or []
+    text = "\n".join(
+        [str(answer.get("headline", "")), str(answer.get("explanation", ""))]
+        + [str(q) for q in questions if isinstance(q, str)]
+    )
+    res = check_text(text, facts, _directions({a: analyses[a] for a in cited}), lang)
     return {
         "ok": res.ok and bool(cited),
         "unmatched_numbers": res.unmatched,
