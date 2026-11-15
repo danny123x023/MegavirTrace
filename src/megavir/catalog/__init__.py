@@ -740,9 +740,11 @@ VARIABLES: dict[str, Variable] = {
             agg="mean",
             fields=("SurfSkinTemp_A", "SurfSkinTemp_D"),
             source_badge="AIRS · Aqua",
-            definition="The temperature of the sea surface's thin top layer, seen from space by infrared.",
+            definition="The temperature of the sea surface's thin top layer, seen from space by infrared. Frozen "
+            "sea is left out: a cell with sea ice that month has no value.",
             why_it_can_trend="The oceans absorb most of the extra heat from greenhouse gases.",
-            caveat="Clear-sky infrared only; 1° grid.",
+            caveat="Infrared needs at least partly clear skies (the microwave sounder helps see past some cloud), so "
+            "very cloudy areas have fewer values; near the ice edge the open-water area changes from year to year; 1° grid.",
             rising_words=("seeing warmer seas", "seeing cooler seas"),
         ),
         # ---- FR2 ---------------------------------------------------------------------

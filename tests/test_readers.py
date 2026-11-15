@@ -287,3 +287,33 @@ def test_months_with_too_few_values_are_missing():
     acc.add(5, np.ones((spec.ny, spec.nx)))
     _, cube = acc.cube()
     assert np.isnan(cube).all()
+
+
+def test_sea_surface_temperature_drops_frozen_sea(monkeypatch):
+    """AIRS skin temperature over sea ice is the ice's temperature: those cell-months are dropped."""
+    from types import SimpleNamespace
+
+    import megavir.store as store
+    from megavir.ingest.pipeline import drop_sea_ice
+
+    ice_spec = GridSpec.global_grid(0.5)
+    sst_spec = GridSpec.global_grid(1.0)
+    m0 = 2020 * 12  # Jan 2020
+    ice = np.zeros((3, ice_spec.ny, ice_spec.nx), np.float32)
+    ice[0, 340:, :] = 80.0  # January: ice north of 80°N
+    ice[1, 340:, :4] = 20.0  # February: one 0.5° cell of a 1° block above the 15 % edge
+    ice[2] = np.nan  # March: no ice data
+    fake = SimpleNamespace(id=7, kind="real", spec=ice_spec, month0=m0, n_months=3)
+    monkeypatch.setattr(store, "active_versions", lambda conn: {"sea_ice": fake})
+    monkeypatch.setattr(store, "read_full", lambda conn, v: ice.copy())
+
+    cube = np.full((4, sst_spec.ny, sst_spec.nx), 5.0, np.float32)
+    cube[0, 0, 0] = -40.0  # colder than any liquid sea
+    note = drop_sea_ice(None, cube, sst_spec, m0, -2.0)
+    assert np.isnan(cube[0, 0, 0])
+    assert np.isnan(cube[0, 170:, :]).all() and np.isfinite(cube[0, :170, 1:]).all()
+    assert np.isnan(cube[1, 170:, :2]).all() and np.isfinite(cube[1, 170:, 2:]).all()  # block maximum
+    # March and April lie outside the ice record: the same calendar month of earlier years is used,
+    # and there is none here, so nothing is dropped by ice
+    assert np.isfinite(cube[2]).all() and np.isfinite(cube[3]).all()
+    assert "sea ice" in note and "beyond the ice record" in note

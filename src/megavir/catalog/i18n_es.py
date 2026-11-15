@@ -112,9 +112,12 @@ ES: dict[str, dict] = {
     },
     "sea_surface_temp": {
         "name": "Temperatura de la superficie del mar",
-        "definition": "La temperatura de la fina capa superior del mar, vista desde el espacio por infrarrojos.",
+        "definition": "La temperatura de la fina capa superior del mar, vista desde el espacio por infrarrojos. El "
+        "mar helado queda fuera: una celda con hielo marino ese mes no tiene valor.",
         "why_it_can_trend": "Los océanos absorben la mayor parte del calor extra de los gases de efecto invernadero.",
-        "caveat": "Solo con cielo despejado; malla de 1°.",
+        "caveat": "El infrarrojo necesita cielos al menos en parte despejados (la sonda de microondas ayuda a ver a "
+        "través de algunas nubes), así que las zonas muy nubosas tienen menos valores; cerca del borde del hielo el "
+        "área de agua abierta cambia de un año a otro; malla de 1°.",
         "rising_words": ("a mares más cálidos", "a mares más fríos"),
     },
     "land_surface_temp": {

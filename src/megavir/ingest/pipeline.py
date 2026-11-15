@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -97,6 +98,7 @@ class RunReport:
     versions: dict = field(default_factory=dict)
     skipped_files: list = field(default_factory=list)
     no_data: list = field(default_factory=list)  # variables with no valid month in the files
+    notes: dict = field(default_factory=dict)  # variable -> what was masked after regridding
 
     def to_dict(self) -> dict:
         return self.__dict__
@@ -418,6 +420,58 @@ def _land_mask_for(conn, spec: GridSpec) -> np.ndarray | None:
     return lf[oi : oi + spec.ny, oj : oj + spec.nx]
 
 
+SEA_ICE_EDGE = 15.0  # %: the usual ice-edge threshold (NSIDC sea ice extent)
+
+
+def drop_sea_ice(conn, cube: np.ndarray, spec: GridSpec, m0: int, floor: float) -> str:
+    """Remove the cell-months of a sea-surface field that are frozen sea (in place).
+
+    A cell is dropped when any part of it had at least 15 % sea ice that month in the stored
+    NSIDC record, or its value is below ``floor``.  Months the ice record does not cover use the
+    same calendar month of the last five years it does cover (dropped if ice was there in any).
+    """
+    from megavir.store import active_versions, read_full
+
+    cube[cube < floor] = np.nan
+    v = active_versions(conn).get("sea_ice")
+    if v is None or v.kind != "real":
+        return f"values below {floor:g} dropped; no real sea-ice record to mask frozen sea"
+    k = int(round(spec.res / v.spec.res))
+    if k < 1 or abs(k * v.spec.res - spec.res) > 1e-6:
+        raise ValueError(f"cannot aggregate the {v.spec.res}° sea-ice grid to {spec.res}°")
+    ice = read_full(conn, v)  # (months, ny, nx) on the sea-ice grid, percent
+    n, ny, nx = ice.shape
+    coarse_spec = GridSpec(
+        spec.res, v.spec.lat0 + (k - 1) * v.spec.res / 2, v.spec.lon0 + (k - 1) * v.spec.res / 2, ny // k, nx // k
+    )
+    oi, oj = spec.offset_in(coarse_spec)
+    if oi < 0 or oj < 0 or oi + spec.ny > coarse_spec.ny or oj + spec.nx > coarse_spec.nx:
+        raise ValueError("the sea-ice grid does not cover this field's grid")
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        coarse = np.nanmax(ice[:, : ny // k * k, : nx // k * k].reshape(n, ny // k, k, nx // k, k), axis=(2, 4))
+    del ice
+    coarse = coarse[:, oi : oi + spec.ny, oj : oj + spec.nx]
+    frozen = np.nan_to_num(coarse, nan=0.0) >= SEA_ICE_EDGE
+    have = np.isfinite(coarse).any(axis=(1, 2))
+    months = m0 + np.arange(cube.shape[0])
+    ice_months = v.month0 + np.arange(n)
+    filled = 0
+    for i, m in enumerate(months):
+        j = int(m - v.month0)
+        if 0 <= j < n and have[j]:
+            mask = frozen[j]
+        else:  # outside the ice record: the same calendar month of the last five years it covers
+            same = np.flatnonzero((ice_months % 12 == m % 12) & have)[-5:]
+            mask = frozen[same].any(axis=0) if same.size else np.zeros(cube.shape[1:], bool)
+            filled += 1
+        cube[i][mask] = np.nan
+    note = f"values below {floor:g} and cell-months with >= {SEA_ICE_EDGE:g}% sea ice (NSIDC version {v.id}) dropped"
+    if filled:
+        note += f"; {filled} months beyond the ice record used the last five years' ice for that month"
+    return note
+
+
 def run(
     product_id: str, mode: str, conn, raw: Path, limit: int | None = None, activate: bool = True
 ) -> RunReport:
@@ -499,6 +553,8 @@ def _run(product_id: str, mode: str, conn, raw: Path, limit: int | None, activat
         dom = p.domain_mask.get(v)
         if dom and land is not None:  # e.g. AIRS skin temperature split into ground and sea
             cube[:, (land < 0.5) if dom == "land" else (land >= 0.5)] = np.nan
+        if v in p.ice_mask:
+            report.notes[v] = drop_sea_ice(conn, cube, spec, m0, p.ice_mask[v])
         validation = validate_cube(v, cube, spec, m0, kind, raw.parent / "quicklook")
         digest = cube_digest(cube)
         same = unchanged_version(conn, v, kind, spec, m0, int(cube.shape[0]), digest) if activate else None

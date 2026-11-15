@@ -61,6 +61,9 @@ class Product:
     granule_filter: callable | None = None  # keep only some granules (monthly sea ice files)
     reader: callable | None = None  # access="download": (path, begin_iso) -> [(month, fields, lats, lons)]
     projected: bool = False  # lats/lons from the reader are 2-D (polar stereographic): bin, do not regrid
+    # var -> coldest believable value; the cell-months with sea ice (NSIDC, >= 15 %) are dropped too.
+    # AIRS skin temperature over frozen sea is the temperature of the ice, not of the sea.
+    ice_mask: dict = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------------------
@@ -299,12 +302,15 @@ _reg(
         fields=["SurfSkinTemp_A", "SurfSkinTemp_D"],
         outputs={"ground_temp": _skin, "sea_surface_temp": _skin},
         domain_mask={"ground_temp": "land", "sea_surface_temp": "ocean"},
+        # liquid sea water freezes near -1.9 °C and its skin is at most a few tenths cooler
+        ice_mask={"sea_surface_temp": -2.0},
         native_lats=regular(89.5, -1.0, 180),
         native_lons=regular(-179.5, 1.0, 360),
         fill=(-9999.0,),
         valid_range=(150, 400),
         record_start="2002-09",
-        notes="HDF4, north -> south; ascending (day) and descending (night) passes averaged.",
+        notes="HDF4, north -> south; ascending (day) and descending (night) passes averaged. Sea surface "
+        "temperature drops cells with sea ice that month (NSIDC >= 15 %) and values below -2 °C.",
     )
 )
 
