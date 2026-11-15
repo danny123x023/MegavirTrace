@@ -306,7 +306,7 @@ export default function Landing() {
     { href: "/explore", icon: ICONS.explore, tone: "blue", title: t("Explore"), text: t("Pick any city, country, state or ocean and one of {n} measurements: get a verdict in plain words, the trend per decade and a map of where it changes.", { n: nVars }) },
     { href: "/compare", icon: ICONS.compare, tone: "orange", title: t("Compare"), text: t("Put two places side by side and test whether their trends really differ, not just whether they look different.") },
     { href: "/related", icon: ICONS.related, tone: "green", title: t("Related variables"), text: t("Find measurements that move together, even months apart, with a clear reminder that a link is not a cause.") },
-    { href: "/cases", icon: ICONS.cases, tone: "indigo", title: t("Detective cases"), text: t("{n} real events, from Europe's 2003 heatwave to the Amazon drought, investigated step by step with the data.", { n: nCases }) },
+    { href: "/cases", icon: ICONS.cases, tone: "indigo", title: t("Detective cases"), text: t("{n} real events and long-term changes, from Europe's 2003 heatwave to India's groundwater, investigated step by step with the data.", { n: nCases }) },
     { href: "/ask", icon: ICONS.ask, tone: "pink", title: t("Ask the AI"), text: t("Ask in your own words. The AI runs the analyses and explains them; every number it writes is checked against the results.") },
     { href: "/start", icon: ICONS.start, tone: "teal", title: t("Start here"), text: t("New to this? Say what kind of place you care about and get the measurements worth a look.") },
   ];

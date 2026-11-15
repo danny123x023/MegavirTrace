@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-CASES_REV = 4
+CASES_REV = 5
 
 
 @dataclass(frozen=True)

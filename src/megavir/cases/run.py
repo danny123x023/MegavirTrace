@@ -232,9 +232,37 @@ def run_month(conn, step: Step, lang: str) -> dict:
     }
 
 
-def _highlight_text(labels: list[str], values: list, step: Step, units_word: str, lang: str) -> str:
-    """Where each marked label ranks in the series, and whether later values went past it."""
+MONTH_NAMES = {
+    "en": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+           "November", "December"],
+    "es": ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+           "noviembre", "diciembre"],
+}  # fmt: skip
+
+
+def partial_year_note(labels: list[str], last_month: str | None, mode: str, lang: str) -> tuple[str | None, str]:
+    """(label, note) for a last year that is still under way, e.g. ("2026", " (to October)")."""
+    if mode not in ("annual", "monthly", "raw") or not labels or not last_month or last_month.endswith("-12"):
+        return None, ""
+    year, month = last_month[:4], int(last_month[5:7])
+    if str(labels[-1])[:4] != year:
+        return None, ""
+    name = MONTH_NAMES.get(lang, MONTH_NAMES["en"])[month - 1]
+    return str(labels[-1]), (f" (hasta {name})" if lang == "es" else f" (to {name})")
+
+
+def _highlight_text(
+    labels: list[str], values: list, step: Step, units_word: str, lang: str, partial: tuple[str | None, str] = (None, "")
+) -> str:
+    """Where each marked label ranks in the series, and whether later values went past it.
+
+    A last year still under way is named as such ("2026 (to October)"), so a ranking never
+    presents it as a whole year."""
     t = T[lang]
+
+    def label_text_p(x: str) -> str:
+        return label_text(x, lang) + (partial[1] if partial[0] is not None and x == partial[0] else "")
+
     pairs = [(lab, v) for lab, v in zip(labels, values, strict=True) if v is not None]
     if not pairs:
         return ""
@@ -249,7 +277,7 @@ def _highlight_text(labels: list[str], values: list, step: Step, units_word: str
         rank = len(better) + 1
         out.append(
             t["rank"].format(
-                label=label_text(h, lang),
+                label=label_text_p(h),
                 rank=_rank_phrase(rank, step.extreme, lang),
                 n=len(pairs),
                 units=units_word,
@@ -265,7 +293,7 @@ def _highlight_text(labels: list[str], values: list, step: Step, units_word: str
                     k=("one" if lang == "en" else "uno") if len(later) == 1 else len(later),
                     was=t["was1"] if len(later) == 1 else t["wasn"],
                     more=more if len(later) == 1 else t["more_high_n" if high else "more_low_n"],
-                    which=_join([label_text(x, lang) for x in later], lang),
+                    which=_join([label_text_p(x) for x in later], lang),
                 )
     return " ".join(out)
 
@@ -289,7 +317,8 @@ def run_trend_step(conn, step: Step, lang: str) -> dict:
     units_word = {"annual": t["years"], "season": t["seasons"].format(s=SEASONS[lang].get(s["season"] or "", "")),
                   "monthly": t["months_unit"]}.get(s["mode"], t["years"])  # fmt: skip
     finding = r["verdict"]["headline"]
-    extra = _highlight_text(s["labels"], s["values"], step, units_word, lang)
+    partial = partial_year_note(s.get("tested", s)["labels"], (r.get("data") or {}).get("last_month"), s["mode"], lang)
+    extra = _highlight_text(s["labels"], s["values"], step, units_word, lang, partial)
     pd = r["stats"]["per_decade"]
     labels = s["labels"]
     return {

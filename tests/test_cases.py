@@ -118,3 +118,12 @@ def test_case_endpoints(client):
         assert ("finding" in s) != ("error" in s)
         assert s["explore"]["v"] == "temp_change"
     assert client.get("/cases/not-a-case").status_code == 404
+
+
+def test_a_year_still_under_way_is_named_as_such():
+    from megavir.cases.run import partial_year_note
+
+    assert partial_year_note(["2024", "2025", "2026"], "2026-10", "annual", "en") == ("2026", " (to October)")
+    assert partial_year_note(["2024", "2025", "2026"], "2026-10", "annual", "es") == ("2026", " (hasta octubre)")
+    assert partial_year_note(["2024", "2025"], "2025-12", "annual", "en") == (None, "")
+    assert partial_year_note(["2025 JJA"], "2026-10", "season", "en") == (None, "")
