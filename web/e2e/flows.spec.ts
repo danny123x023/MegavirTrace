@@ -167,8 +167,8 @@ test("works offline after one visit (production build)", async ({ page, context 
   await context.setOffline(false);
 });
 
-test("phone layout: nothing wider than the screen, every page link in view", async ({ browser }) => {
-  for (const width of [360, 390]) {
+test("phone layout: nothing wider than the screen; a short header whose menu shows every page link", async ({ browser }) => {
+  for (const width of [320, 360, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 844 } });
     await page.goto("/explore");
     await expect(page.locator(".verdict h2")).toBeVisible();
@@ -176,13 +176,35 @@ test("phone layout: nothing wider than the screen, every page link in view", asy
     await page.goto("/");
     await expect(page.locator(".lp-live-verdict")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    // one short row: brand, language and the menu button, each a 44 px touch target
+    const header = page.locator(".site-header");
+    expect((await header.boundingBox())!.height).toBeLessThan(80);
     const links = page.getByRole("navigation", { name: "Main" }).getByRole("link");
+    await expect(links.first()).toBeHidden();
+    const menu = page.getByRole("button", { name: "Menu" });
+    await expect(menu).toHaveAttribute("aria-expanded", "false");
+    expect((await menu.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await menu.click();
+    await expect(menu).toHaveAttribute("aria-expanded", "true");
     await expect(links).toHaveCount(8);
     for (const link of await links.all()) {
       await expect(link).toBeInViewport({ ratio: 1 });
+      expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
-    // the theme switch keeps a visible word on phones, and its full name
+    // the theme switch sits in the menu with a visible word and its full name
     await expect(page.getByRole("button", { name: "Dark mode" })).toContainText("Dark");
+    // Escape closes the menu; following a link closes it too
+    await page.keyboard.press("Escape");
+    await expect(links.first()).toBeHidden();
+    await menu.click();
+    await links.filter({ hasText: "Method" }).click();
+    await expect(page).toHaveURL(/\/methods$/);
+    await expect(links.first()).toBeHidden();
+    // nothing on the page is set smaller than 12 px
+    const tiny = await page.evaluate(() =>
+      [...document.querySelectorAll("body *")].filter((e) => (e as HTMLElement).offsetParent && [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent!.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12).length,
+    );
+    expect(tiny).toBe(0);
     await page.close();
   }
 });

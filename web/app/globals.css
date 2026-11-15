@@ -152,6 +152,7 @@ a:hover { color: var(--accent-hover); text-decoration-thickness: 2px; }
 .site-nav a:hover { color: var(--text-primary); background: var(--surface-hover); }
 .site-nav a[aria-current="page"] { color: var(--accent-soft-text); background: var(--accent-soft); font-weight: 600; }
 .header-spacer { flex: 1; }
+.menu-btn { display: none; }
 .header-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; } /* right-aligned, also when it wraps to its own row */
 
 /* outlined tool buttons with an icon and a label (language, dark mode, full screen) */
@@ -222,7 +223,7 @@ h3 { font-size: 0.9375rem; font-weight: 650; margin: 0 0 6px; }
 .suggest-card p { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
 .badge {
   display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; vertical-align: middle;
-  font-size: 0.6875rem; font-weight: 600; color: var(--text-secondary); background: var(--surface-hover); border: 1px solid var(--border);
+  font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); background: var(--surface-hover); border: 1px solid var(--border);
 }
 .card-link { font-weight: 600; font-size: 0.875rem; text-decoration: none; }
 .card-link:hover { text-decoration: underline; }
@@ -366,7 +367,7 @@ figcaption + .table-scroll { margin-top: 10px; }
 .map-hint { margin: 6px 0 0; }
 /* map controls: links in the credits are underlined (not told apart by colour alone) */
 .map-box .maplibregl-ctrl-attrib a { text-decoration: underline; }
-.map-box .maplibregl-ctrl-scale { font-size: 11px; }
+.map-box .maplibregl-ctrl-scale { font-size: 12px; }
 .legend-ramp { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--text-secondary); flex-wrap: wrap; margin-top: 10px; }
 .legend-ramp .swatches { display: flex; border-radius: 4px; overflow: hidden; }
 .legend-ramp .swatches span { width: 22px; height: 10px; }
@@ -448,14 +449,40 @@ body:has(.embed-card) main { padding: 8px; }
 @media (min-width: 720px) and (max-width: 1319px) { .brand-tag { display: inline; } }
 @media (min-width: 820px) and (max-width: 1539px) { :root[lang="es"] .brand-tag { display: inline; } }
 
+/* touch screens wider than a phone (tablets): the header controls are touch-sized too */
+@media (pointer: coarse) and (min-width: 641px) {
+  .site-nav a { height: 44px; }
+  .tool-btn, .select-icon select { height: 44px; min-height: 44px; }
+  .brand { min-height: 44px; }
+}
+
 /* phone-first adjustments */
 @media (max-width: 640px) {
   :root { --gutter: 14px; }
   main { padding-top: 18px; }
   h1 { font-size: 1.5rem; }
-  /* the header scrolls away (two rows of links would take too much of a small screen) */
-  .site-header { position: static; }
-  .site-nav a { height: 32px; padding: 0 11px; font-size: 0.8125rem; }
+  /* one short row: brand, language and a menu button.  The page links and the dark-mode switch
+     open below it.  Every control is at least 44 px tall (the usual smallest touch target). */
+  .site-header {
+    position: static; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
+    gap: 0 8px; padding: 8px var(--gutter); min-height: 60px;
+  }
+  .header-tools { display: contents; }
+  .brand { grid-column: 1; grid-row: 1; min-width: 0; min-height: 44px; overflow: hidden; }
+  .brand-tag { display: none !important; }
+  .select-icon { grid-column: 2; grid-row: 1; }
+  .menu-btn { display: flex; grid-column: 3; grid-row: 1; width: 44px; padding: 0; }
+  .tool-btn, .select-icon select { height: 44px; min-height: 44px; }
+  .site-nav, :root[lang="es"] .site-nav { display: none; }
+  .header-tools > .tool-btn { display: none; }
+  .site-header.menu-open .site-nav {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px;
+    grid-column: 1 / -1; grid-row: 2; width: auto; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border);
+  }
+  .site-header.menu-open .tool-btn .tool-label { display: inline; }
+  .site-header.menu-open .tool-btn .tool-label-short { display: none; }
+  .site-header.menu-open .header-tools > .tool-btn:not(.layout-toggle) { display: flex; grid-column: 1 / -1; grid-row: 3; justify-self: start; margin: 6px 0 4px; }
+  .site-nav a { height: 44px; padding: 0 12px; font-size: 0.9375rem; border-radius: var(--radius-sm); white-space: normal; line-height: 1.2; }
   /* short visible labels ("Dark"); the button's name stays the full one */
   .tool-btn .tool-label { display: none; }
   .tool-btn .tool-label-short { display: inline; }
@@ -483,6 +510,7 @@ body:has(.embed-card) main { padding: 8px; }
   .brand > svg { display: none; }
   .site-nav a { padding: 0 9px; }
 }
+
 
 /* ---- Ask page: progress while the AI works -------------------------------------------- */
 .ai-progress { margin-top: 16px; padding: 14px 18px; }
@@ -530,7 +558,7 @@ body:has(.embed-card) main { padding: 8px; }
 .stretched-link:focus-visible { outline: none; }
 .case-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .eyebrow, .step-kicker {
-  display: block; margin: 0; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  display: block; margin: 0; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--text-secondary);
 }
 .badge-real { gap: 4px; color: var(--accent-soft-text); background: var(--accent-soft); border-color: transparent; }
@@ -738,13 +766,13 @@ body.panel-covering { overflow: hidden; }
 .lp-live { position: relative; margin: 0; padding: 20px 22px 18px; border: 0; border-radius: 22px; min-height: 360px;
   background: color-mix(in srgb, var(--surface-1) 84%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   box-shadow: 0 24px 60px -18px rgba(15, 23, 42, 0.28), 0 0 0 1px var(--border); animation: lp-float-in 800ms cubic-bezier(0.2, 0.7, 0.2, 1) both 150ms; }
-.lp-live-top { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.lp-live-top { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
 .lp-live-src { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-muted); font-size: 0.75rem; }
 .lp-live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--series-3); animation: lp-pulse 2.2s infinite; }
 .lp-live-title { font-weight: 700; font-size: 1rem; margin: 12px 0 6px; }
 .lp-chart { position: relative; height: 180px; margin: 6px 0 30px; }
 .lp-chart svg { display: block; width: 100%; height: 100%; overflow: visible; animation: lp-wipe 1.5s cubic-bezier(0.3, 0.6, 0.2, 1) both 450ms; }
-.lp-chart-zero { position: absolute; left: 2px; transform: translateY(-125%); font-size: 0.6875rem; color: var(--text-muted); }
+.lp-chart-zero { position: absolute; left: 2px; transform: translateY(-125%); font-size: 0.75rem; color: var(--text-muted); }
 .lp-chart-end { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--series-2);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--series-2) 25%, transparent); animation: lp-rise 500ms ease-out both 1.7s; }
 .lp-chart-value { position: absolute; right: 12px; bottom: 8px; white-space: nowrap; font-weight: 800; font-size: 0.95rem; color: var(--text-primary);

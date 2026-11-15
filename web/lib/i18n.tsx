@@ -282,6 +282,7 @@ const ES: Record<string, string> = {
   "usual: {v}": "habitual: {v}",
   "marked": "marcado",
   "Dark": "Oscuro",
+  "Menu": "Menú",
   "Type a question first (at least 3 characters).": "Escribe primero una pregunta (al menos 3 caracteres).",
   "Zoom in": "Acercar",
   "Zoom out": "Alejar",
