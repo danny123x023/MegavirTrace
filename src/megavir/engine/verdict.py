@@ -28,6 +28,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
         # body
         "plain": "In short: {place} is {word}.",
         "range": "Best estimate {srate} {unit} per decade (95% range {lo} to {hi}), {period}.",
+        "range_unbounded": "Best estimate {srate} {unit} per decade, {period}. The ups and downs are so persistent "
+        "that the record holds too few independent values to give a meaningful 95% range.",
         "agree_sig": "Two different tests agree that a change this steady is unlikely to be chance "
         "(Mann–Kendall p {p_mk}; least squares p {p_ols}), after allowing for how much each {step} "
         "resembles the one before.",
@@ -69,7 +71,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "cmp_head_nosig": "{Name}: no clear difference between the trends in {a} and {b}.",
         "cmp_body": "The test is run on the difference {a} minus {b}, so the ups and downs the two "
         "regions share cancel out. Difference {sdiff} {unit} per decade (95% range {lo} to {hi}; "
-        "p {p}).",
+        "Mann–Kendall p {p_mk}; least squares p {p_ols}; both must pass).",
+        "cmp_body_unbounded": "The test is run on the difference {a} minus {b}, so the ups and downs the two "
+        "regions share cancel out. Difference {sdiff} {unit} per decade (Mann–Kendall p {p_mk}; least squares "
+        "p {p_ols}; both must pass); the record holds too few independent values to give a meaningful 95% range.",
         "cmp_mdd": "With this record, differences smaller than about {mdd} {unit} per decade cannot be "
         "detected.",
         "cmp_opposite": "The two trends point in opposite directions.",
@@ -87,6 +92,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "down": "bajando",
         "plain": "En resumen: en {place} la tendencia es {word}.",
         "range": "Mejor estimación {srate} {unit} por década (rango del 95 %: {lo} a {hi}), {period}.",
+        "range_unbounded": "Mejor estimación {srate} {unit} por década, {period}. Los altibajos son tan persistentes "
+        "que el registro tiene muy pocos valores independientes para dar un rango del 95 % con sentido.",
         "agree_sig": "Dos pruebas distintas coinciden en que un cambio tan constante difícilmente es "
         "casualidad (Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}), teniendo en cuenta cuánto se "
         "parece cada {step} al anterior.",
@@ -125,7 +132,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "cmp_head_sig": "{Name}: {a} y {b} realmente cambian de forma distinta, unos {diff} {unit} por década.",
         "cmp_head_nosig": "{Name}: sin diferencia clara entre las tendencias de {a} y {b}.",
         "cmp_body": "La prueba se hace sobre la diferencia {a} menos {b}, así que los altibajos comunes se "
-        "cancelan. Diferencia {sdiff} {unit} por década (rango del 95 %: {lo} a {hi}; p {p}).",
+        "cancelan. Diferencia {sdiff} {unit} por década (rango del 95 %: {lo} a {hi}; "
+        "Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}; ambas deben superarse).",
+        "cmp_body_unbounded": "La prueba se hace sobre la diferencia {a} menos {b}, así que los altibajos comunes se "
+        "cancelan. Diferencia {sdiff} {unit} por década (Mann–Kendall p {p_mk}; mínimos cuadrados p {p_ols}; ambas "
+        "deben superarse); el registro tiene muy pocos valores independientes para dar un rango del 95 % con sentido.",
         "cmp_mdd": "Con este registro no se pueden detectar diferencias menores de unos {mdd} {unit} por década.",
         "cmp_opposite": "Las dos tendencias van en direcciones opuestas.",
         "step_year": "año",
@@ -142,6 +153,19 @@ EFFECT_WORDS = {
 LANGUAGES = tuple(TEMPLATES)
 
 UNIT_WORDS_ES = (("/month", "/mes"), ("/year", "/año"), ("/hour", "/hora"), ("/season", "/estación"), ("molecules", "moléculas"))
+
+
+# A change in a quantity measured in % (sea ice, snow cover, cloud cover) is in percentage points:
+# 60 % to 57 % is 3 points, a 5 % relative fall.  "% per decade" would read as a relative rate.
+CHANGE_UNITS = {"%": {"en": ("percentage points", "pp"), "es": ("puntos porcentuales", "p. p.")}}
+
+
+def change_unit(unit: str, lang: str, short: bool = False) -> str:
+    """The unit of a rate, difference or departure: percentage points for % quantities."""
+    words = CHANGE_UNITS.get(unit.strip())
+    if words:
+        return words.get(lang, words["en"])[1 if short else 0]
+    return unit_text(unit, lang)
 
 
 def unit_text(unit: str, lang: str) -> str:
@@ -218,7 +242,7 @@ def trend_verdict(
     if lang not in TEMPLATES:
         lang = "en"
     t = TEMPLATES[lang]
-    unit = unit_text(unit, lang)
+    unit = change_unit(unit, lang)
     per_dec = 10.0
     rate = st.sen.slope * per_dec
     lo, hi = st.sen.ci_low * per_dec, st.sen.ci_high * per_dec
@@ -246,6 +270,10 @@ def trend_verdict(
         "step": step,
         **shown,
     }
+    bounded = math.isfinite(lo) and math.isfinite(hi)
+    range_key = "range" if bounded else "range_unbounded"
+    if not bounded:  # nothing to quote: the text never shows −∞ or +∞
+        del shown["lo"], shown["hi"]
     up = st.sen.slope > 0
     word = loc["rising_words"][0] if up else loc["rising_words"][1]
     updown = t["up"] if up else t["down"]
@@ -261,20 +289,20 @@ def trend_verdict(
         key = "head_sig_pl" if loc.get("plural") and "head_sig_pl" in t else "head_sig"
         headline = t[key].format(updown=updown, **common)
         sentences.append(t["plain"].format(place=place, word=word))
-        sentences.append(t["range"].format(**common))
+        sentences.append(t[range_key].format(**common))
         sentences.append(t["agree_sig"].format(**common))
     elif (st.mk.p < st.alpha) != (st.ols.p < st.alpha) or (
         st.mk.p < st.alpha and st.ols.p < st.alpha and not st.agree
     ):
         status = "tests_disagree"
         headline = t["head_mixed"].format(**common)
-        sentences.append(t["range"].format(**common))
+        sentences.append(t[range_key].format(**common))
         sentences.append(t["mixed"].format(**common))
     else:
         status = "not_significant"
         headline = t["head_nosig"].format(**common)
-        sentences.append(t["range"].format(**common))
-        sentences.append(t["nosig" if lo <= 0 <= hi else "nosig_edge"].format(**common))
+        sentences.append(t[range_key].format(**common))
+        sentences.append(t["nosig" if bounded and lo <= 0 <= hi else "nosig_edge"].format(**common))
 
     if st.ols.testable:
         span = st.last - st.first
@@ -387,7 +415,7 @@ def compare_verdict(
     data_kind: str = "real",
 ) -> dict:
     t = TEMPLATES.get(lang, TEMPLATES["en"])
-    unit = unit_text(unit, lang if lang in TEMPLATES else "en")
+    unit = change_unit(unit, lang if lang in TEMPLATES else "en")
     d = cmp["difference"]
     shown = {
         "diff": fmt_num(abs(d["slope_per_decade"]), lang=lang),
@@ -395,13 +423,19 @@ def compare_verdict(
         "lo": fmt_signed(d["ci_low_per_decade"], lang=lang),
         "hi": fmt_signed(d["ci_high_per_decade"], lang=lang),
         "p": fmt_p(d["p"], lang),
+        "p_mk": fmt_p(d.get("p_mk", d["p"]), lang),
+        "p_ols": fmt_p(d.get("p_ols", d["p"]), lang),
         "mdd": fmt_num(d["min_detectable_per_decade"], lang=lang),
     }
     loc = var.local(lang)
     common = {"Name": _cap(loc["name"]), "a": name_a, "b": name_b, "unit": unit, **shown}
     status = "significant" if d["significant"] else "not_significant"
     headline = t["cmp_head_sig" if d["significant"] else "cmp_head_nosig"].format(**common)
-    sentences = [t["cmp_body"].format(**common), t["cmp_mdd"].format(**common)]
+    bounded = math.isfinite(d["ci_low_per_decade"]) and math.isfinite(d["ci_high_per_decade"])
+    body = t["cmp_body" if bounded else "cmp_body_unbounded"].format(**common)
+    if not bounded:
+        del shown["lo"], shown["hi"]
+    sentences = [body, t["cmp_mdd"].format(**common)]
     if cmp.get("opposite"):
         sentences.append(t["cmp_opposite"])
     caveats = [t["cav_cause"], loc["caveat"]]

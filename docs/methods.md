@@ -66,7 +66,8 @@ Monthly values become:
   k months that are and need the same share of them (⌈10k/12⌉ of k, with k ≥ 3); the verdict names those
   months, and a yearly total (rainfall) is then the total over them;
 - **seasonal values:** all 3 months are needed, and December belongs to the following DJF;
-- **monthly anomalies:** each month minus its calendar month's mean over the chosen years. The chart shows the
+- **monthly anomalies:** each month minus its calendar month's mean over the chosen years (so the baseline moves
+  a little when the year range changes; the Explore page says so beside the view switch). The chart shows the
   months, but the tests use their yearly means. Neighbouring months, and the months of one El Niño year, are not
   independent: with month-to-month memory plus a slow year-to-year swing, a correction for one-month memory
   (the seasonal Mann–Kendall test with an AR(1) fitted at one month) called 18–31% of trend-free series
@@ -101,6 +102,9 @@ n_eff − 2 degrees of freedom as the least-squares test.
 **Sen's slope** is the headline rate, with Gilbert's (1987) interval computed from the corrected Var(S) and the
 same t quantile as the Mann–Kendall test it inverts. With the normal quantile the interval was narrower than the
 test (87–92% coverage at r₁ = 0.5), and a few "no clear trend" verdicts showed a 95% range that excluded zero.
+When the record holds very few independent values (the t quantile with n_eff − 2 degrees of freedom is then
+large), the interval has no limit: about 9–13% of trend-free AR(1) records of 20–30 years at r₁ ≥ 0.7. The
+verdict then says that no meaningful 95% range can be given, rather than printing −∞ to +∞.
 
 **Agreement rule.** "Significant" requires p < 0.05 in both tests, and the least-squares slope, Sen's slope
 and S must have the same sign.
@@ -108,7 +112,13 @@ and S must have the same sign.
 **Detectability.** Following Weatherhead et al. (1998), a trend ω needs about
 n* = [3.3 σ_N √(12/k) / |ω| · √((1 + φ)/(1 − φ))]^{2/3} years to be detected, where k is the number of values
 per year. Weatherhead's formula is written for monthly data; with yearly values the slope variance scales by
-12. A non-significant verdict reports how many more years the record would need.
+12. A non-significant verdict reports how many more years the record would need. ω is the headline Sen's slope
+and σ_N the least-squares residual scatter (φ is r₁): the formula is written for a least-squares slope, and
+using the reported rate answers how long a record would need to be to detect the rate the verdict states.
+
+**Percentage points.** For quantities measured in % (sea ice concentration, snow cover, cloud cover), rates,
+differences and departures are in percentage points: a fall from 60% to 57% is 3 points (a 5% relative fall).
+Verdicts write "percentage points", tiles and maps "pp", and the AI check rejects "% per decade".
 
 **Size against the noise and robustness.** We report the change of the trend line over the record divided by
 the residual scatter (small < 0.5 ≤ moderate < 1 ≤ large < 2 ≤ very large). The trend is labelled *fragile*
@@ -142,7 +152,8 @@ pass depends on the region tested, the map says so.
 
 The test runs on the trend of the year-by-year difference A − B (Santer et al. 2000). Shared variability
 cancels, so correlated regions are not under-tested and anti-correlated ones are not over-tested. We report
-the difference per decade, its 95% interval, p, and the smallest difference the record could detect:
+the difference per decade, its 95% interval, the Mann–Kendall and least-squares p-values of the difference
+(both must pass; where one p is shown, it is the larger), and the smallest difference the record could detect:
 (t₀.₉₇₅ + t₀.₈₀) × SE_adj, for 80% power.
 
 ## 6. Moves together: relationships between variables
@@ -211,7 +222,7 @@ never part of the trend tests.
 | --- | --- |
 | Uncorrected S, τ, Var(S), Z, p and Sen's slope vs `pymannkendall`; least-squares slope and SE vs `scipy` | Identical to floating-point precision |
 | Exact AR(1) Var(S) vs 6,000 simulated series | Within 6% (the Monte Carlo error) |
-| False alarms, 2,000 AR(1) series per setting, n = 20 and 30 | 4.0–4.1% at r₁ = 0.3 (target ≤ 5%); 4.4–4.8% at 0.5 (target ≤ 7%); 5.0–5.5% at 0.7 (target ≤ 6%); 5.8–6.8% at 0.9 (see Limitations) |
+| False alarms, 2,000 AR(1) series per setting, n = 20 and 30 | 4.0–4.1% at r₁ = 0.3 (target ≤ 5%); 4.4–4.8% at 0.5 (target ≤ 7%); 5.0–5.5% at 0.7 (target ≤ 6%); 4.4–5.8% at 0.8 and 5.8–6.8% at 0.9 (gated at ≤ 7%; see Limitations) |
 | Monthly views: month-to-month memory 0.5 plus a year-to-year swing, 25 years, 1,000 series | 2.0% with an uncorrelated swing, 4.0% with persistence 0.5 (target ≤ 7%); the earlier one-month correction gave 18–31% |
 | 95% interval coverage of a synthetic trend (Sen's interval, testable records) | 95–97.5% at r₁ ≤ 0.3; 93–96% at 0.5 (was 87.5–92% with the normal quantile); 85–95% at 0.7 |
 | Difference test, correlation −0.5 to 0.95 | 3.7–4.8% false alarms |

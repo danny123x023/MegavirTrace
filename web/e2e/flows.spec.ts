@@ -96,7 +96,8 @@ test("new measurements (2026-11-15): listed by theme; a short record opens on mo
   await page.goto("/explore?v=sea_salinity&place=preset%3Abay_of_bengal&label=Bay+of+Bengal");
   await expect(page.locator(".verdict h2")).toContainText("Sea surface salinity in the Bay of Bengal");
   await expect(page).toHaveURL(/mode=monthly/);
-  await expect(page.getByText("The chart shows months; the statistics use their yearly means")).toBeVisible();
+  // the note says the baseline is the years selected (it moves when the years change)
+  await expect(page.getByText("The chart shows each month against its usual value over the years selected")).toBeVisible();
 });
 
 test("explore: search a place and switch modes", async ({ page }) => {

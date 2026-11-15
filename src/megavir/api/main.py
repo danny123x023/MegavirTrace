@@ -26,6 +26,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
 from megavir import cases as detective
 from megavir.catalog import DATASETS, PLANNED_DATASETS
@@ -47,6 +48,14 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 app.add_middleware(OriginAndHeaders)
+# A big region's result carries its cell map (the Arctic: 27,000 cells, 2 MB of JSON); compressed it is a
+# fraction of that.  The Ask page's progress stream (NDJSON) is left alone so its lines arrive as they happen.
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1000,
+    compresslevel=5,
+    exclude_content_types=(*DEFAULT_EXCLUDED_CONTENT_TYPES, "application/x-ndjson"),
+)
 app.include_router(admin_router)  # import dashboard (/admin/*)
 app.include_router(basemap_router)  # detailed base map, relayed and kept (/basemap/*)
 

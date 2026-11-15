@@ -465,11 +465,15 @@ def _labels_in(sentence: str, lang: str) -> list[str]:
 
 def _context(text: str, found: FoundNumber) -> tuple[str, str]:
     t = normalise_text(text)
-    return t[max(0, found.start - 12) : found.start].lower(), t[found.end : found.end + 30].lower()
+    return t[max(0, found.start - 12) : found.start].lower(), t[found.end : found.end + 60].lower()
 
 
 RATE_TAIL = re.compile(r"per decade|a decade|each decade|/ ?decade|por década|cada década|/ ?década|par décennie|pro jahrzehnt")
 YEAR_RATE_TAIL = re.compile(r"per year|a year|each year|/ ?yr|/ ?year|por año|al año|cada año")
+# the unit of a change in a % quantity ("2.9 percentage points per decade") sits between number and tail
+CHANGE_UNIT_HEAD = re.compile(r"^\s*(?:percentage[- ]points?|puntos? porcentuales?|pp\b|p\.\s?p\.)")
+# the engine's rates are never relative: "2.9% per decade" misstates percentage points as a relative change
+PERCENT_RATE = re.compile(r"^\s*%\s*(?:" + RATE_TAIL.pattern + r"|" + YEAR_RATE_TAIL.pattern + r")")
 P_HEAD = re.compile(r"\bp\s*(?:-?value)?\s*(?:=|<|>|≤|≥|of|de|is|es)?\s*$")
 
 
@@ -481,6 +485,9 @@ def _check_number(n: FoundNumber, text: str, sentence_labels: list[str], f: Fact
         return matches(n, f.pvalues + [0.05, 0.001, 0.01, 0.025])
     if n.decimals == 0 and 1800 <= abs(n.value) <= 2200 and not n.has_unit:
         return int(abs(n.value)) in f.years
+    if PERCENT_RATE.match(after):
+        return False
+    after = CHANGE_UNIT_HEAD.sub("", after, count=1)
     if RATE_TAIL.search(after[:28]):
         return matches(n, f.rates)
     candidates = list(f.general)

@@ -5,7 +5,7 @@ import { type ReactNode, type RefObject, useEffect, useRef, useState } from "rea
 import Sparkline from "@/components/Sparkline";
 import { apiGet, type CaseSummary, type Variable } from "@/lib/api";
 import { fmtSigned } from "@/lib/format";
-import { type Lang, THEME_ES, useI18n, varText } from "@/lib/i18n";
+import { changeUnit, type Lang, THEME_ES, useI18n, varText } from "@/lib/i18n";
 import { DIVERGING } from "@/lib/palette";
 
 // The landing page: what MegavirTrace is, in one screen, then what you can do, how a verdict is
@@ -212,8 +212,8 @@ function LiveCard({ summary, failed }: { summary: Summary | null; failed: boolea
           {hero.significant && <Icon d={ICONS.check} size={14} />}
           {hero.significant ? t("More than chance") : t("Not clearly more than chance")}
         </span>
-        <span className="lp-badge">{t("Trend since {year}: {x} per decade", { year: String(hero.since), x: `${fmtSigned(hero.per_decade, 2)} ${hero.units}` })}</span>
-        <span className="lp-badge">{t("Average since {year}: {x} per decade", { year: String(hero.full_since), x: `${fmtSigned(hero.full_per_decade, 2)} ${hero.units}` })}</span>
+        <span className="lp-badge">{t("Trend since {year}: {x} per decade", { year: String(hero.since), x: `${fmtSigned(hero.per_decade, 2)} ${changeUnit(hero.units, lang)}` })}</span>
+        <span className="lp-badge">{t("Average since {year}: {x} per decade", { year: String(hero.full_since), x: `${fmtSigned(hero.full_per_decade, 2)} ${changeUnit(hero.units, lang)}` })}</span>
       </div>
       <Link className="lp-live-link" href={heroExplore(hero.since)}>
         {t("Open this result in Explore")} <Icon d={ICONS.arrow} size={15} />

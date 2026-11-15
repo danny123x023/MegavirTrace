@@ -274,3 +274,49 @@ def test_spanish_verdicts_use_spanish_unit_words():
     v = trend_verdict(st, var, "Testlandia", "mm/month", lang="es")
     text = v["headline"] + " ".join(v["sentences"])
     assert "mm/mes" in text and "mm/month" not in text
+
+
+def test_rates_of_a_percent_quantity_are_in_percentage_points():
+    """Sea ice at 60 % falling to 57 % fell 3 points, not 3 %: rates and totals say percentage points."""
+    st, var = _trend(var="sea_ice", trend=-0.3, noise=0.5)
+    for lang, words in (("en", "percentage points"), ("es", "puntos porcentuales")):
+        v = trend_verdict(st, var, "Testland", "%", lang=lang)
+        text = v["headline"] + " " + " ".join(v["sentences"])
+        assert words in text
+        assert "% per decade" not in text and "% por década" not in text
+    # the level unit itself is untouched elsewhere
+    from megavir.engine.verdict import change_unit, unit_text
+
+    assert unit_text("%", "en") == "%" and change_unit("%", "en", short=True) == "pp"
+    assert change_unit("°C", "es") == "°C" and change_unit("mm/month", "es") == "mm/mes"
+
+
+def test_an_unbounded_range_is_described_not_printed():
+    import dataclasses
+
+    st, var = _trend(trend=0.0, noise=1.0)
+    st = dataclasses.replace(
+        st,
+        significant=False,
+        sen=dataclasses.replace(st.sen, ci_low=float("-inf"), ci_high=float("inf")),
+        mk=dataclasses.replace(st.mk, p=0.4),
+        ols=dataclasses.replace(st.ols, p=0.5),
+    )
+    for lang in ("en", "es"):
+        v = trend_verdict(st, var, "Testland", "°C", lang=lang)
+        text = " ".join(v["sentences"])
+        assert "∞" not in text and "lo" not in v["shown"] and "hi" not in v["shown"]
+        assert ("meaningful 95% range" if lang == "en" else "rango del 95 % con sentido") in text
+        assert "includes no change" not in text
+
+
+def test_comparison_names_both_p_values():
+    idx, base = monthly(trend=0.0, noise=1.0)
+    a = build_series(idx, base + 0.04 * (idx / 12 - 2001), "annual")
+    b = build_series(idx, base, "annual")
+    c = compare_series(a, b)
+    v = compare_verdict(c, VARIABLES["sea_ice"], "A", "B", "%")
+    body = v["sentences"][0]
+    assert "Mann–Kendall p" in body and "least squares p" in body and "both must pass" in body
+    assert "percentage points per decade" in body
+    assert {"p", "p_mk", "p_ols"} <= set(v["shown"])

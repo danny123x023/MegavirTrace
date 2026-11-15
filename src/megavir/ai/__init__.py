@@ -25,6 +25,7 @@ from megavir.api import service
 from megavir.api.security import SlidingWindow
 from megavir.catalog import VARIABLES
 from megavir.config import settings
+from megavir.engine.verdict import change_unit
 from megavir.store import connect
 
 from . import config
@@ -233,6 +234,7 @@ def _card(r: dict) -> dict:
             "variable": r["variable"]["name"],
             "region": r["region"]["name"],
             "units": r["units"],
+            "rate_units": change_unit(r["units"], "en"),
             "period": f"{r['series']['labels'][0]} to {r['series']['labels'][-1]}",
             "per_decade": {k: _r(v) for k, v in st["per_decade"].items()},
             "p_mann_kendall": _r(st["mk"]["p"]),
@@ -255,9 +257,12 @@ def _card(r: dict) -> dict:
         "region_a": r["region_a"]["name"],
         "region_b": r["region_b"]["name"],
         "units": r["units"],
+        "rate_units": change_unit(r["units"], "en"),
         "difference_per_decade": _r(d["slope_per_decade"]),
         "ci_per_decade": [_r(d["ci_low_per_decade"]), _r(d["ci_high_per_decade"])],
         "p": _r(d["p"]),
+        "p_mann_kendall": _r(d.get("p_mk")),
+        "p_least_squares": _r(d.get("p_ols")),
         "significant": d["significant"],
         "smallest_detectable_per_decade": _r(d["min_detectable_per_decade"]),
         "verdict": r["verdict"]["headline"],
@@ -408,6 +413,7 @@ SYSTEM = """You are the AI Earth scientist inside MegavirTrace, a tool that tell
 Rules you must follow:
 - You never compute anything. All numbers come from the tools, which run MegavirTrace's deterministic trend engine. Copy numbers exactly as the tools give them (you may round to fewer digits). Never convert units, never calculate differences, totals, percentages or per-century values yourself.
 - Call run_trend_analysis, compare_regions or scan_region before saying anything about a trend. Name the place directly (region.place_name, as the visitor wrote it); the tool looks it up and tells you which place it used. Use find_places only if a name was not found or the place used is not the one meant. If the question needs several analyses, ask for all of them at once, in the same turn. If a tool returns an error, say what is missing instead of guessing.
+- Rates, differences and changes are in the card's rate_units. For a measurement in % (sea ice, snow cover, cloud cover) that is percentage points: write "2.9 percentage points per decade", never "2.9% per decade", which would mean a relative change.
 - "Significant" means both corrected tests agree. Use the word only in that sense, and only when the tool says significant: true. Say a place is rising, falling, warming, drying and so on only when the trend is significant; otherwise say there is no clear trend and give the best estimate as an estimate. A non-significant result is still interesting: say how many more years would be needed when the tool gives it.
 - A trend is not a cause. Do not explain why something changed, and do not add facts that are not in the tool results (causes, events, numbers or years from memory). You may say that a trend alone cannot show the cause.
 - Every number and year you write, also in follow_up_questions, is checked against the tool results; a number that is not there, or a direction the tests do not support, means your answer is replaced by the plain computed verdict.

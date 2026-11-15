@@ -16,7 +16,7 @@ from megavir.api import service
 from megavir.api.service import AnalysisError
 from megavir.catalog import DATASETS, VARIABLES
 from megavir.engine.aggregate import month_zscore
-from megavir.engine.verdict import fmt_num, fmt_signed
+from megavir.engine.verdict import change_unit, fmt_num, fmt_signed
 from megavir.places.presets import PRESETS
 from megavir.store import active_versions
 
@@ -347,7 +347,7 @@ def run_trend_step(conn, step: Step, lang: str) -> dict:
             "trend": {"line": s["trend_line"], "low": _per_year(pd["sen_low"]), "high": _per_year(pd["sen_high"])},
             "highlight": [labels.index(h) for h in step.highlight if h in labels],
             "units": r["units"],
-            "per_decade_label": f"{fmt_signed(pd['sen'], 2, lang=lang)} {r['units']}",
+            "per_decade_label": f"{fmt_signed(pd['sen'], 2, lang=lang)} {change_unit(r['units'], lang, short=True)}",
         },
         "region": r["region"]["name"],
         "analysis_id": r["id"],

@@ -7,7 +7,7 @@ import { DataFlag, Downloads } from "@/components/Result";
 import TrendChart from "@/components/TrendChart";
 import { apiGet, apiPost, type Catalog, type CompareResult } from "@/lib/api";
 import { fmt, fmtP, fmtSigned } from "@/lib/format";
-import { unitText, useI18n, varText } from "@/lib/i18n";
+import { changeUnit, useI18n, varText } from "@/lib/i18n";
 import Panel from "@/components/Panel";
 
 type Opposites = {
@@ -123,7 +123,7 @@ export default function ComparePage() {
               <Panel aria-label="The difference">
                 <TrendChart
                   decimals={result.variable.decimals}
-                  title={t("Difference, A minus B ({units})", { units: unitText(result.units, lang) })}
+                  title={t("Difference, A minus B ({units})", { units: changeUnit(result.units, lang, true) })}
                   labels={c.labels}
                   t={c.t}
                   units={result.units}
@@ -138,12 +138,12 @@ export default function ComparePage() {
                 <EarthMap outlines={[{ geometry: result.region_a.geometry, bbox: result.region_a.bbox }, { geometry: result.region_b.geometry, bbox: result.region_b.bbox }]} height={320} />
               </Panel>
               <div className="tiles">
-                <div className="tile"><div className="label">{t("Difference in trend")}</div><div className="value">{fmtSigned(d.slope_per_decade)} {unitText(result.units, lang)}</div><div className="sub">{t("per decade · 95% range {lo} to {hi}", { lo: fmtSigned(d.ci_low_per_decade), hi: fmtSigned(d.ci_high_per_decade) })}</div></div>
-                <div className="tile"><div className="label">{t("Test on the difference")}</div><div className="value">p {fmtP(d.p).startsWith("<") ? fmtP(d.p) : "= " + fmtP(d.p)}</div><div className="sub">{t("both tests must agree")}</div></div>
-                <div className="tile"><div className="label">{t("Smallest detectable")}</div><div className="value">{fmt(d.min_detectable_per_decade)} {unitText(result.units, lang)}</div><div className="sub">{t("per decade, with this record")}</div></div>
+                <div className="tile"><div className="label">{t("Difference in trend")}</div><div className="value">{fmtSigned(d.slope_per_decade)} {changeUnit(result.units, lang)}</div><div className="sub">{Number.isFinite(d.ci_low_per_decade) && Number.isFinite(d.ci_high_per_decade) ? t("per decade · 95% range {lo} to {hi}", { lo: fmtSigned(d.ci_low_per_decade), hi: fmtSigned(d.ci_high_per_decade) }) : t("per decade · no meaningful 95% range (too few independent values)")}</div></div>
+                <div className="tile"><div className="label">{t("Test on the difference")}</div><div className="value">p {fmtP(d.p).startsWith("<") ? fmtP(d.p) : "= " + fmtP(d.p)}</div><div className="sub">{t("the larger of the two tests' p values; both must pass")}</div></div>
+                <div className="tile"><div className="label">{t("Smallest detectable")}</div><div className="value">{fmt(d.min_detectable_per_decade)} {changeUnit(result.units, lang)}</div><div className="sub">{t("per decade, with this record")}</div></div>
                 <div className="tile"><div className="label">{t("How much they move together")}</div><div className="value">r = {fmt(c.correlation, 2)}</div><div className="sub">{t("shared ups and downs cancel in the difference")}</div></div>
-                <div className="tile"><div className="label">{t("Trend in A")}</div><div className="value">{fmtSigned(c.stats_a.per_decade?.sen ?? c.stats_a.sen.slope * 10)} {unitText(result.units, lang)}</div><div className="sub">{c.stats_a.significant ? t("per decade · significant") : t("per decade · not significant")}</div></div>
-                <div className="tile"><div className="label">{t("Trend in B")}</div><div className="value">{fmtSigned(c.stats_b.per_decade?.sen ?? c.stats_b.sen.slope * 10)} {unitText(result.units, lang)}</div><div className="sub">{c.stats_b.significant ? t("per decade · significant") : t("per decade · not significant")}</div></div>
+                <div className="tile"><div className="label">{t("Trend in A")}</div><div className="value">{fmtSigned(c.stats_a.per_decade?.sen ?? c.stats_a.sen.slope * 10)} {changeUnit(result.units, lang)}</div><div className="sub">{c.stats_a.significant ? t("per decade · significant") : t("per decade · not significant")}</div></div>
+                <div className="tile"><div className="label">{t("Trend in B")}</div><div className="value">{fmtSigned(c.stats_b.per_decade?.sen ?? c.stats_b.sen.slope * 10)} {changeUnit(result.units, lang)}</div><div className="sub">{c.stats_b.significant ? t("per decade · significant") : t("per decade · not significant")}</div></div>
               </div>
               <Downloads id={result.id} />
             </div>
