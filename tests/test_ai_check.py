@@ -240,3 +240,22 @@ def test_a_negation_does_not_reach_across_a_new_clause():
         assert not res.ok and res.direction_errors, bad
     assert _check("No dice por qué se está calentando la Tierra.", r, lang="es").ok
     assert not _check("La Tierra no se está calentando.", r, lang="es").ok
+
+
+def test_yes_no_questions_and_other_measurements_are_not_direction_claims():
+    """Two real answers about Arctic sea ice were replaced by the plain verdict: a follow-up question
+    'Is the Arctic getting warmer over the same years?' was read as 'the sea ice is rising'."""
+    r = _trend_result(sen=-2.9, direction="falling", region="the Arctic")
+    r["units"] = "%"
+    r["variable"] = {"name": "Sea ice concentration", "i18n": {"es": {"name": "Concentración de hielo marino"}}}
+    r["stats"]["per_decade"].update(sen=-2.9, sen_low=-3.6, sen_high=-2.3)
+    assert _check("Arctic sea ice is shrinking. Is the Arctic getting warmer over the same years?", r).ok
+    assert _check("El hielo marino del Ártico está disminuyendo. ¿Se está calentando el Ártico?", r, lang="es").ok
+    # warming words do not judge a sea ice trend, but generic direction words still do
+    assert _check("Arctic sea ice is shrinking while the air above it is warming.", r).ok
+    assert not _check("Arctic sea ice is growing.", r).ok
+    # a why-question can presuppose a direction, so it is still checked
+    assert not _check("Why is Arctic sea ice growing?", r).ok
+    # for a temperature trend, warming words still count
+    t = _trend_result(sen=-0.3, direction="falling")
+    assert not _check("The whole Earth is getting warmer.", t).ok

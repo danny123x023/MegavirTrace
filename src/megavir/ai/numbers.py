@@ -414,6 +414,28 @@ HEDGES = {
            "insuficiente", "azar", "ligera", "ligero", "parece", "sugiere", "harían falta", "haría falta",
            "todavía no", "altibajos", "no coinciden"],
 }  # fmt: skip
+# words for which way a temperature moves: they judge a temperature trend, not sea ice or rainfall
+# ("Is the Arctic getting warmer?" said nothing about the sea ice trend it was checked against)
+HEAT_WORDS = {
+    "en": {"warming", "warmed", "warmer", "hotter", "heating", "cooling", "cooled", "cooler", "colder"},
+    "es": {"calentando", "calentado", "calentamiento", "más cálido", "más cálida", "más cálidos", "más cálidas",
+           "más caliente", "más calientes", "enfriando", "enfriado", "enfriamiento", "más frío", "más fría",
+           "más fríos", "más frías"},
+}  # fmt: skip
+# a yes/no question asserts no direction; a why/how question can presuppose one, so it is still checked
+YES_NO = re.compile(r"^(?:is|are|was|were|has|have|had|does|do|did|will|would|can|could|should|might|may)\b")
+ES_WH = re.compile(r"^¿\s*(?:qué|por qué|cómo|cuándo|dónde|cuánt[oa]s?|cuál(?:es)?|quién(?:es)?)\b")
+
+
+def _asks_yes_no(sentence: str) -> bool:
+    s = sentence.strip().lower()
+    if not s.endswith("?"):
+        return False
+    if s.startswith("¿"):
+        return not ES_WH.match(s)
+    return bool(YES_NO.match(s))
+
+
 SIGNIFICANCE = re.compile(r"(?<!\w)(in)?(significant\w*|significativ\w*)")
 # sentences about the pace of change or a difference judge those, not the trend itself
 OTHER_CLAIMS = re.compile(r"accelerat|speed|pace|faster|slower|turning|differen|acelera|ritmo|diferencia")
@@ -545,7 +567,10 @@ def _check_directions(text: str, directions: list[dict], lang: str, res: CheckRe
     hedges = HEDGES.get(lang, HEDGES["en"])
     # with one trend cited (or all saying the same) every sentence is about it
     same = len({(d["direction"], bool(d.get("significant", True))) for d in trends}) == 1
+    heat = HEAT_WORDS.get(lang, HEAT_WORDS["en"])
     for sent in _sentences(text):
+        if _asks_yes_no(sent):
+            continue
         low = sent.lower()
         about = [d for d in trends if _mentions(low, d.get("names", []))]
         if not about and same:
@@ -563,7 +588,11 @@ def _check_directions(text: str, directions: list[dict], lang: str, res: CheckRe
             significant = bool(d.get("significant", True))
             if direction == "flat":
                 continue
-            right, wrong = (ups, downs) if direction == "rising" else (downs, ups)
+            u, dn = ups, downs
+            if not d.get("temperature", True):  # warmer/cooler say nothing about this measurement
+                u = [h for h in ups if h[1] not in heat]
+                dn = [h for h in downs if h[1] not in heat]
+            right, wrong = (u, dn) if direction == "rising" else (dn, u)
             said_wrong = [w for _, w, neg in wrong if not neg]
             said_right = [w for _, w, neg in right if not neg]
             denied_right = [w for _, w, neg in right if neg]
