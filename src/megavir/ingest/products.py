@@ -1,4 +1,4 @@
-"""The 11 NASA data products: where they live, what to read and how to convert it.
+"""The NASA data products (23): where they live, what to read and how to convert it.
 
 Each product turns its files into monthly fields on its native grid, in standard orientation
 (latitude south -> north, longitude -180 -> 180), in everyday units:

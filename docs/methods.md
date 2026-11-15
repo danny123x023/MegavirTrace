@@ -4,7 +4,7 @@
 
 ## Abstract
 
-MegavirTrace answers four questions for any region on Earth, for 16 NASA variables: what is changing, where,
+MegavirTrace answers four questions for any region on Earth, for 31 NASA variables: what is changing, where,
 how much, and whether the change is significant. It is built around three commitments. Significance is
 claimed only when two different tests agree after correction for serial correlation, and false alarms are
 measured by Monte Carlo rather than assumed. Every number comes from one deterministic engine and can be
@@ -14,12 +14,15 @@ the 1975–present warming rate within 0.002 °C per decade.
 
 ## 1. Data
 
-Seventeen NASA products feed one monthly store (Table 1 of the design document). The products are OMI OMNO2d
-v004, GLDAS Noah 2.1, GPM IMERG V07, MiCASA v1, MODIS MOD13C2 v061, NASA-SSH v1, MERRA-2 M2SMNXSLV and
-M2TMNXSLV, the GSFC GRACE/GRACE-FO mascons, AIRS AIRS3STM v7 and GISTEMP v4.
+Twenty-three NASA products feed one monthly store of 31 variables (Table 1 of the design document). The first
+eleven are OMI OMNO2d v004, GLDAS Noah 2.1, GPM IMERG V07, MiCASA v1, MODIS MOD13C2 v061, NASA-SSH v1, MERRA-2
+M2SMNXSLV and M2TMNXSLV, the GSFC GRACE/GRACE-FO mascons, AIRS AIRS3STM v7 and GISTEMP v4.
 
-Six more were added later (MODIS land surface temperature and snow cover, MERRA-2 aerosols, CERES EBAF energy
-budget, NSIDC-0051 sea ice and OCO-2 GEOS XCO₂). CERES comes as one file for the whole record, MODIS snow as HDF4
+Six more were added next (MODIS land surface temperature and snow cover, MERRA-2 aerosols, CERES EBAF energy
+budget, NSIDC-0051 sea ice and OCO-2 GEOS XCO₂), and six after a survey of 18 data portals: three more MERRA-2
+collections (M2TMNXRAD cloud cover and sunshine, M2TMNXLND snow water, M2TMNXFLX wind speed, plus ozone and water
+vapour from M2TMNXSLV), GPCP V3.3 rainfall since 1983, SMAP RSS V6 sea surface salinity and MODIS-Aqua L3m
+chlorophyll. CERES comes as one file for the whole record, MODIS snow as HDF4
 without OPeNDAP, and sea ice on a 25 km polar stereographic grid. Sea-ice pixel centres are converted to latitude
 and longitude with the ellipsoidal inverse projection (Snyder 1987, Hughes ellipsoid, true scale at 70°; checked
 against NSIDC's published grid corners) and averaged into the 0.5° cells that contain them. Poleward of about
@@ -29,7 +32,8 @@ ice, as in NSIDC's Sea Ice Index: it shrank from 1.2 to 0.3 to 0.03 million km²
 missing it made early years read low (the Arctic September decline came out about 8% too small, with a step in
 1987).
 
-Fields are regridded conservatively to a common 0.5° grid. AIRS keeps its 1° grid and GISTEMP its 2° grid.
+Fields are regridded conservatively to a common 0.5° grid. AIRS and CERES keep their 1° grids, GISTEMP its 2°
+grid, and SMAP salinity is stored at 0.25°; land masks exist for every stored grid.
 For regular latitude–longitude cells the regridding separates into a latitude overlap matrix, weighted by
 Δ(sin φ) (true area), and a longitude overlap matrix that wraps at the dateline for global grids. Missing data
 are regridded as a valid-area mask: an output cell gets a value only when at least half its area had data,
@@ -53,7 +57,7 @@ added back. A change in which part of the region has data then does not show up 
 North China Plain preset, where coverage ranges from 11% to 88%, averaging raw values gave +0.044 mg m⁻³ per decade
 and anomalies give −0.065 (neither significant). Where every cell has data the two are identical. The *coverage*
 is the share of the region's weight that had data. Months with coverage below 50% are treated as missing, and the
-lowest coverage used is reported as a caveat.
+lowest coverage used is reported as a caveat when it is below 95%.
 
 Monthly values become:
 - **yearly values:** a year needs at least 10 of 12 months, and its value is the 12-month climatological mean
@@ -125,8 +129,10 @@ two-piece (hinge) fit that is reported only when it beats the straight line by �
 
 ## 4. Where inside the region
 
-The same tests run, vectorised, on every cell's yearly (or seasonal) series; in the monthly views, on the
-yearly means of each cell's monthly anomalies. For speed, the Sen median uses
+The same agreement rule runs, vectorised, on every cell's yearly (or seasonal) series; in the monthly views, on
+the yearly means of each cell's monthly anomalies. Each cell gets Sen's slope, the tie-corrected Mann–Kendall test
+and least squares with the same memory correction and t reference, and its p is the larger of the two when the
+signs agree; a cell too persistent to test (n_eff ≤ 3) gets no p and does not enter the false-discovery step. For speed, the Sen median uses
 partitioning for complete cells and sorting for cells with gaps. Benjamini–Hochberg q-values are computed
 across the region's cells, and a cell passes when q ≤ 2α. Wilks (2016) shows that controlling the FDR at
 α_FDR = 2α keeps the field-wide false-alarm rate near α for spatially correlated fields. Because which cells
@@ -148,8 +154,8 @@ two series correlate. We then compute the correlation r_k with variable B shifte
 
 Neighbouring months are alike, and removing monthly means leaves its own pattern (correlation 12, 24 and
 36 months apart). The variance of r for unrelated series is therefore taken from Bartlett's formula,
-Var(r) = (1 + 2 Σ_j ρ_A(j) ρ_B(j)) / n, summed to 36 months, with the 13 degrees of freedom used by each series
-removed. The lag-1 terms use a bias correction measured by simulation: r₁ = (n r̂₁ + 1)/(n − 5.5). The
+Var(r) = (1 + 2 Σ_j ρ_A(j) ρ_B(j)) / n, summed to 36 months, with 13 degrees of freedom (12 monthly means and the
+trend) removed from n once. The lag-1 terms use a bias correction measured by simulation: r₁ = (n r̂₁ + 1)/(n − 5.5). The
 strongest lag's p-value is multiplied by the number of lags tried (Bonferroni).
 
 A first version with only the lag-1 (Bretherton et al. 1999) effective sample size gave 6–9% false claims for
@@ -211,17 +217,19 @@ never part of the trend tests.
 | Difference test, correlation −0.5 to 0.95 | 3.7–4.8% false alarms |
 | Moves together: unrelated series sharing a season and a trend, 25 lags searched | ≤ 3.5% false claims; a real 3-month lead found at the right lag every time |
 | "Speeding up" claims for a straight trend with AR(1) noise, n = 15–45 | ≤ 3.3% at r₁ = 0.3, ≤ 4.8% at r₁ = 0.5; real acceleration found in > 90% of 45-year records |
-| Vectorised cell engine vs per-series engine | Same slope and p |
+| Vectorised cell engine vs per-series engine (ties included) | Same slope and joint p |
 | GISTEMP global series vs NASA GLB.Ts+dSST (1880–2025) | r = 0.9997, mean absolute difference 0.008 °C, warming since 1975 of 0.209 vs 0.207 °C per decade, same warmest year |
 | Readers on fake files in each product's layout | Orientation, units, fills and dateline wrap correct |
 | MERRA-2 air temperature vs NASA Giovanni, test box, 36 months | r = 0.9998, mean difference 1.6% |
+| IMERG rainfall vs NASA Giovanni, test box, 108 months | r = 0.995, mean difference 1.9% |
 | Exported notebook vs app | Every number reproduced |
 
 **NASA Giovanni.** Giovanni's time-series service answers one grid point at a time, from the product's native
 grid (MERRA-2 is served hourly, so its monthly means are formed from the hours). We average a 3 × 3 grid of
 points across the test box, weighted by cos(latitude), and compare with our stored, regridded box mean.
 MERRA-2 air temperature, Oct 2023 – Sep 2026: r = 0.9998, mean difference 1.6% (targets r ≥ 0.98, within 5%).
-IMERG rainfall is checked the same way once it is imported (`megavir-ingest giovanni-check rainfall`).
+IMERG rainfall, Oct 2016 – Sep 2025 (108 months, 25 points): r = 0.995, mean difference 1.9%. A re-import that
+reproduces the same values exactly keeps its check.
 
 ## 10. Limitations
 

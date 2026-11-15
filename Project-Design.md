@@ -41,14 +41,14 @@ MegavirTrace is a web tool that answers the challenge's four questions for any p
 
 | Criterion | Target |
 | --- | --- |
-| Variables | 16 in 7 themes from 11 NASA data products, plus up to 6 more (FR2) |
+| Variables | 31 in 8 themes from 23 NASA data products: the first 16, the six of FR2 and nine added after a survey of 18 data portals |
 | Regions | Any drawn box, about 36,000 named places, real country and state outlines |
 | Speed | Repeated analysis under 50 ms; first analysis under 2 s |
 | False alarms | At most 5% at lag-1 autocorrelation 0.3, at most 7% at 0.5 (Monte Carlo) |
 | Data checks | Regional IMERG and MERRA-2 series match NASA Giovanni: correlation at least 0.98, mean difference within 5% |
 | Accessibility | No serious or critical WCAG 2.1 AA violations |
 
-**Out of scope:** forecasting, attributing causes, daily extremes (the store is monthly), user accounts and admin pages.
+**Out of scope:** forecasting, attributing causes, daily extremes (the store is monthly) and user accounts. The site owner has an admin panel for operating it (see the API section).
 
 ## Users and key scenarios
 
@@ -132,23 +132,23 @@ There are 20 requirements in eight groups: 7 Must, 7 Should and 6 Could. The 7 M
 | ID | Requirement | Answers | Priority |
 | --- | --- | --- | --- |
 | FR19 | Wider reach: several interface languages (English and Spanish first); works on weak connections, offline after one visit, with lightweight, phone-first pages | Reach | Could |
-| FR20 | Security and cost: strict Origin check, lock file, secret scan, dependency audit, AI limits on by default with a daily cap, and keys kept only in the server's configuration | Safe operation | Must |
+| FR20 | Security and cost: strict Origin check, lock file, secret scan, dependency audit, AI limits on by default with a daily cap, and keys kept only on the server (its configuration, or an owner-only settings file written from the admin panel), never in the browser | Safe operation | Must |
 
 ## Data design
 
-Eleven NASA data products (MERRA-2 supplies two of them) feed one monthly store on a common 0.5° grid (AIRS and GISTEMP keep their coarser grids): 16 variables and about 41 GB of raw downloads. Eight of the products need an Earthdata Login; three are public.
+The table lists the first eleven NASA data products (MERRA-2 supplies two of them): 16 variables and about 41 GB of raw downloads, eight needing an Earthdata Login and three public. The store now holds 23 products and 31 variables on a common 0.5° grid (AIRS and CERES keep 1°, GISTEMP 2°, and SMAP salinity is stored at 0.25°): the six of FR2 and nine more added after a survey of 18 data portals (MERRA-2 cloud cover, sunshine, snow water, wind speed, ozone and water vapour; GPCP rainfall since 1983; SMAP sea surface salinity; MODIS-Aqua chlorophyll). Twenty of the 23 need an Earthdata Login.
 
 | Variable(s) | Product | Archive and access | Grid: native → stored | Record from | Expected download |
 | --- | --- | --- | --- | --- | --- |
 | Nitrogen dioxide (NO₂) | OMI `OMNO2d` v004, daily | GES DISC, OPeNDAP (NO₂ field only) | 0.25° daily → 0.5° monthly | 2004-10 | 16 GB, 8,025 files |
-| Topsoil moisture, soil moisture 0–100 cm, evapotranspiration (+ drought months, derived) | GLDAS Noah 2.1 `GLDAS_NOAH025_M` | GES DISC, earthaccess | 0.25° → 0.5° | 2000-01 | 7.5 GB |
+| Topsoil moisture, soil moisture 0–100 cm, evapotranspiration | GLDAS Noah 2.1 `GLDAS_NOAH025_M` | GES DISC, earthaccess | 0.25° → 0.5° | 2000-01 | 7.5 GB |
 | Rainfall | GPM IMERG Final `GPM_3IMERGM` V07 | GES DISC, earthaccess | 0.1° → 0.5° | 2000-06 | 5.9 GB |
 | Fire carbon emissions | MiCASA v1 | Public copy at NASA NCCS | 0.1° → 0.5° | 2001-01 | 4.9 GB |
 | Vegetation greenness (NDVI) | MODIS/Terra `MOD13C2` v061 | LP DAAC, OPeNDAP (NDVI only) | 0.05° → 0.5° | 2000-02 | 2.8 GB |
 | Sea level | NASA-SSH v1, weekly | PO.DAAC | weekly → monthly 0.5° | 1992-11 | 1.9 GB |
 | Daily high, nightly low, downpour intensity | MERRA-2 `M2SMNXSLV` | GES DISC, OPeNDAP (3 fields) | 0.5° × 0.625° → 0.5° | 1980-01 | 0.9 GB |
 | Water stored on land | GRACE/GRACE-FO mascons | NASA GSFC, public | mascons → 0.5° | 2002-04 | 0.5 GB |
-| Air temperature (2 m) | MERRA-2 `M2TMNXSLV` | GES DISC, OPeNDAP (T2M only) | 0.5° × 0.625° → 0.5° | 1980-01 | 0.3 GB |
+| Air temperature (2 m) | MERRA-2 `M2TMNXSLV` | GES DISC, OPeNDAP (T2M; ozone and water vapour added later) | 0.5° × 0.625° → 0.5° | 1980-01 | 0.3 GB |
 | Ground and sea surface temperature | AIRS `AIRS3STM` v7 | GES DISC, OPeNDAP (2 fields) | 1° (kept) | 2002-09 | 0.15 GB |
 | Surface temperature change | GISTEMP v4 | NASA GISS, public HTTPS | 2° (kept) | 1880-01 | 25 MB |
 
@@ -232,7 +232,7 @@ The ingest pipeline is the only part that talks to NASA. Pages (through the API)
 | `POST /ai/ask`, `POST /ai/explain` | AI scientist; `explain` takes an analysis id, never numbers sent by the client |
 | `GET /reports/{id}`, `GET /reports/{id}/export?format=` | Saved results; CSV, Excel, PDF, notebook |
 
-There are no admin pages and no admin endpoints. Data imports run as a server job, started from the command line. The AI services, models, keys and limits, and the Earthdata Login, are set in the server's configuration.
+Operating the site: an owner-only admin panel (`/admin`, sign-in sessions opened with the administrator token) sets the AI services, models and keys and the Earthdata account, kept in an owner-only settings file on the server and never sent to the browser. The import dashboard (`/imports`, endpoints under `/admin/`) starts and follows data imports, which also run from the command line. Without the administrator token both are read-only.
 
 ## Scientific engine specification
 
@@ -290,7 +290,7 @@ The AI is optional and never computes. It turns a question into calls to the eng
 - Anthropic's Messages API, with structured output.
 
 How they are managed:
-- Services, models and keys are set in the server's configuration. There is no admin page.
+- Services, models and keys are set in the server's configuration or, by the owner, in the admin panel (kept in an owner-only file on the server).
 - A key is sent only to its own service's address, never to the browser.
 - If the service fails, the visitor gets the computed verdict and the failure is counted.
 

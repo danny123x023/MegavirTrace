@@ -5,7 +5,7 @@
 * the monthly views (tested on yearly means) stay near 5 % with year-to-year memory;
 * a synthetic trend is recovered inside its 95 % interval;
 * the two-region difference test keeps false alarms near 5 % whatever the correlation;
-* the vectorised cell engine gives the same slope and p as the per-series engine.
+* the vectorised cell engine gives the same slope and joint p (agreement rule) as the per-series engine.
 
 2,000 runs per setting.  The binomial standard error at 5 % is 0.5 %, so the thresholds are
 the design targets themselves, not loosened ones.
@@ -88,11 +88,16 @@ def test_cell_engine_matches_series_engine():
     n, cells = 24, 60
     t = np.arange(n) + 2001.5
     X = ar1(rng, n, 0.4, cells).T + 0.03 * t[:, None] * rng.uniform(-1, 1, cells)
+    X[3:7, 5] = 1.25  # ties, as saturated sea ice or snow cover gives
     res = cell_trends(t, X)
-    for c in range(0, cells, 7):
-        ols, mk, sen, _, _ = trend_test(t, X[:, c])
+    for c in range(0, cells, 1):
+        ols, mk, sen, agree, _ = trend_test(t, X[:, c])
         assert res["slope"][c] == pytest.approx(sen.slope, rel=1e-9, abs=1e-12)
-        assert res["p"][c] == pytest.approx(mk.p, rel=1e-6, abs=1e-9)
+        joint = (max(mk.p, ols.p) if agree else 1.0) if ols.testable else None
+        if joint is None:
+            assert np.isnan(res["p"][c])  # too persistent to test: not a test at all
+        else:
+            assert res["p"][c] == pytest.approx(joint, rel=1e-6, abs=1e-9)
 
 
 def test_benjamini_hochberg_matches_definition():
@@ -112,9 +117,13 @@ def test_seasonal_cell_engine_matches_series_engine():
     res = cell_trends(t, X, group=grp)
     assert res["seasonal"]
     for c in range(0, cells, 6):
-        ols, mk, sen, _, _ = trend_test(t, X[:, c], 12, grp)
+        ols, mk, sen, agree, _ = trend_test(t, X[:, c], 12, grp)
         assert res["slope"][c] == pytest.approx(sen.slope, rel=1e-9, abs=1e-12)
-        assert res["p"][c] == pytest.approx(mk.p, rel=1e-6, abs=1e-9)
+        joint = (max(mk.p, ols.p) if agree else 1.0) if ols.testable else None
+        if joint is None:
+            assert np.isnan(res["p"][c])
+        else:
+            assert res["p"][c] == pytest.approx(joint, rel=1e-6, abs=1e-9)
 
 
 @pytest.mark.parametrize("n", [20, 30])

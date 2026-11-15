@@ -1,7 +1,8 @@
 """Variable and dataset catalog (FR1, FR2).
 
 Every DOI below was resolved against NASA CMR (products) or Crossref (papers); see
-``scripts/cmr_lookup.py`` and ``tests/test_catalog.py``.
+``scripts/cmr_lookup.py``.  ``tests/test_api.py`` and ``tests/test_imports.py`` check that every
+variable has a dataset, a theme and Spanish texts.
 """
 
 from __future__ import annotations

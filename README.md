@@ -11,9 +11,10 @@ The design is in [`Project-Design.md`](Project-Design.md). The method is in [`do
 ## What it does
 
 - **Landing page** (`/`): what the site is in one screen, with a live result computed from the data (the
-  whole Earth's surface temperature, year by year, with its verdict and one stripe per year), the numbers
-  behind the site, the ways in, three detective cases and the NASA products used. It needs one request,
-  `GET /landing` (real measurements only; warmed by `precompute`). Old `/?v=…` links and embed cards
+  whole Earth's surface temperature, year by year since 1880, with the verdict for the warming since 1975 and
+  one stripe per year), the numbers behind the site, the ways in, three detective cases and the NASA products
+  used. It needs two requests, `GET /landing` (real measurements only; warmed by `precompute`) and
+  `GET /cases`. Old `/?v=…` links and embed cards
   redirect to Explore.
 - **Explore** (`/explore`): pick a variable and a place (search about 39,000 places, 138 presets, or draw or type a box).
   You get a plain-language verdict, a chart with the trend and its 95% range, the statistics, and a cell map
@@ -74,7 +75,8 @@ A non-significant verdict says how many more years of data a trend of that size 
 | Water stored on land | GSFC GRACE/GRACE-FO mascons | **Real, global, 2002 to present** (analysed month by month because of mission gaps) |
 | Fire carbon emissions | MiCASA v1 | **Real, global, 2001–2024** |
 | Carbon dioxide (XCO₂) | OCO-2 GEOS L3 V10r | **Real, global, January 2015 to February 2022** (the product ends there): 7 full years, too short for the trend test, which needs 8 |
-| The other 17 variables | OMI, GLDAS, GPM IMERG, MODIS (×3), NASA-SSH, MERRA-2 (×3), AIRS, CERES, NSIDC | **Real, global** (imported with a NASA Earthdata Login, see below) |
+| Rainfall | GPM IMERG V07 | **Real, global, mid-2000 to present.** Matches NASA Giovanni over the test box: r = 0.995, mean difference 1.9% (108 months) |
+| The other 16 variables | OMI, GLDAS, MODIS (×3), NASA-SSH, MERRA-2 (×3), AIRS, CERES, NSIDC | **Real, global** (imported with a NASA Earthdata Login, see below) |
 | Added 2026-11-15: sea surface salinity · ocean chlorophyll (phytoplankton) · cloud cover · sunshine at the ground · snow water · wind speed · ozone layer · water vapour · rainfall since 1983 | SMAP RSS V6 (PO.DAAC) · MODIS-Aqua L3m R2022.0 (OB.DAAC) · MERRA-2 M2TMNXRAD, M2TMNXLND, M2TMNXFLX, M2TMNXSLV · GPCP V3.3 | **Real, global** (ocean-only for salinity and chlorophyll; salinity since 2015, chlorophyll since 2002-07, GPCP since 1983, MERRA-2 since 1980) |
 
 The **test box** is about 5° × 5° on the US Gulf Coast (95–90°W, 27.5–32.5°N): Louisiana, east Texas, Houston
@@ -117,7 +119,7 @@ Open <http://localhost:3000>. `scripts/dev.sh status` and `scripts/dev.sh stop` 
 
 ### NASA Earthdata products
 
-Fourteen products need a free [Earthdata Login](https://urs.earthdata.nasa.gov). Set `EARTHDATA_TOKEN`, or
+Twenty of the 23 products need a free [Earthdata Login](https://urs.earthdata.nasa.gov). Set `EARTHDATA_TOKEN`, or
 `EARTHDATA_USERNAME` and `EARTHDATA_PASSWORD`, or add a `~/.netrc` entry for `urs.earthdata.nasa.gov`. Then:
 
 ```bash
@@ -254,7 +256,7 @@ Deployment: `deploy/` has an nginx site (one origin, `/api` → FastAPI), system
 | FR6 | Template verdicts | Must | Done (English; Spanish templates in the engine) |
 | FR10 | Compare two regions | Must | Done, plus the opposite-trend finder |
 | FR20 | Security and cost | Must | Done |
-| FR2 | Six more variables | Should | Code ready: MODIS land surface temperature and snow cover, MERRA-2 aerosols, CERES energy budget, NSIDC sea ice, OCO-2 CO₂ (readers tested on fake files; downloads need Earthdata Login) |
+| FR2 | Six more variables | Should | Done: MODIS land surface temperature and snow cover, MERRA-2 aerosols, CERES energy budget, NSIDC sea ice and OCO-2 CO₂ are loaded as real data (CO₂ ends in February 2022, too short for the trend test) |
 | FR7 | Speeding-up trends | Should | Done: curvature test with memory correction, calibrated so false "speeding up" claims stay within the targets |
 | FR8 | Cell trend map with FDR | Should | Done |
 | FR9 | 2D/3D Earth view | Should | Done (animated switch; instant with reduced motion) |

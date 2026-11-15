@@ -41,7 +41,7 @@ export default function MethodsPage() {
           <li><strong>Agreement rule.</strong> &ldquo;Significant&rdquo; needs both tests at α = 0.05 and all slopes pointing the same way. Monte Carlo tests in CI (2,000 AR(1) series per setting) hold false alarms to at most 5% at r₁ = 0.3 and at most 7% at r₁ = 0.5.</li>
           <li><strong>Years needed to detect</strong> a trend of this size (Weatherhead et al. 1998), so a non-significant result says how many more years are needed.</li>
           <li><strong>Size against the noise</strong> and a <strong>robustness</strong> check: Sen&apos;s slope must keep its sign in both halves, without the end years and leaving out any one year.</li>
-          <li><strong>Where inside the region:</strong> the same tests on every cell, then Benjamini–Hochberg q-values with α<sub>FDR</sub> = 2α for spatially correlated fields (Wilks 2016). Cells that do not pass are faded.</li>
+          <li><strong>Where inside the region:</strong> the same agreement rule on every cell (tie-corrected Mann–Kendall and least squares, both corrected for memory; cells too persistent to test are left out), then Benjamini–Hochberg q-values with α<sub>FDR</sub> = 2α for spatially correlated fields (Wilks 2016). Cells that do not pass are faded.</li>
           <li><strong>Comparing two regions:</strong> the test runs on the trend of the difference series A − B (Santer et al. 2000), with the smallest difference the record could detect.</li>
           <li><strong>Plain words from fixed templates.</strong> The verdict is never written by AI. The optional AI scientist only explains stored results, and its numbers and directions are checked.</li>
         </ol>

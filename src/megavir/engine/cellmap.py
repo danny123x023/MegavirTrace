@@ -1,8 +1,9 @@
 """Where inside the region (FR8): a trend for every grid cell, then false-discovery control.
 
-A vectorised Sen slope and AR(1)-corrected Mann–Kendall test (t reference with n_eff - 2
-degrees of freedom, as in the single-series engine) runs on each cell's yearly (or seasonal)
-series.  Benjamini–Hochberg q-values are computed across the cells of the region,
+The single-series agreement rule, vectorised, runs on each cell's yearly (or seasonal)
+series: Sen's slope, a tie-corrected Mann–Kendall test and least squares, both corrected for
+memory with the same r1 and a t reference with n_eff - 2 degrees of freedom; a cell's p is the
+larger of the two when the signs agree.  Benjamini–Hochberg q-values are computed across the cells of the region,
 and a cell "passes" when q <= 2 alpha: Wilks (2016) shows that, for spatially correlated
 fields, controlling the FDR at alpha_FDR = 2 alpha_global keeps the chance of any false
 field-wide finding near alpha_global.
@@ -147,9 +148,26 @@ def _cell_tests(t, X, i, j, group):
         return _cell_tests_inner(t, X, i, j, group)
 
 
+def _tie_term(X: np.ndarray) -> np.ndarray:
+    """Sum of t(t-1)(2t+5) over groups of tied values, per column (NaN ignored)."""
+    Xs = np.sort(X, axis=0)  # NaN sort last
+    same = np.isfinite(Xs[1:]) & (Xs[1:] == Xs[:-1])
+    run = np.ones(X.shape[1])
+    tie = np.zeros(X.shape[1])
+    for k in range(same.shape[0]):
+        ended = ~same[k]
+        tie += np.where(ended & (run > 1), run * (run - 1) * (2 * run + 5), 0.0)
+        run = np.where(same[k], run + 1, 1.0)
+    return tie + np.where(run > 1, run * (run - 1) * (2 * run + 5), 0.0)
+
+
 def _cell_tests_inner(
     t: np.ndarray, X: np.ndarray, i: np.ndarray, j: np.ndarray, group: np.ndarray | None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The regional agreement rule on every cell: tie-corrected Mann–Kendall and least squares,
+    both corrected for memory with the same r1 and t reference; a cell's p is the larger of the
+    two when their signs and Sen's agree, else 1.  Cells too persistent to test (n_eff <= 3) get
+    no p, so they neither pass nor count in the false-discovery step."""
     X = np.asarray(X, float)
     valid = np.isfinite(X)
     n = valid.sum(axis=0)
@@ -159,35 +177,48 @@ def _cell_tests_inner(
     S = np.nansum(np.sign(dx), axis=0)
     sen = nanmedian_axis0(dx / dt)
 
-    # least-squares residual lag-1 autocorrelation per cell (consecutive rows = one step)
+    # least squares per cell, and the lag-1 autocorrelation of its residuals (consecutive rows = one step)
     tt = np.where(valid, t[:, None], np.nan)
     tm = tt - np.nanmean(tt, axis=0)
     xm = X - np.nanmean(X, axis=0)
-    b = np.nansum(tm * xm, axis=0) / np.nansum(tm * tm, axis=0)
+    sxx = np.nansum(tm * tm, axis=0)
+    b = np.nansum(tm * xm, axis=0) / sxx
     resid = xm - b * tm
     num = np.nansum(resid[:-1] * resid[1:], axis=0)
     den = np.nansum(resid * resid, axis=0)
     pairs_ok = (valid[:-1] & valid[1:]).sum(axis=0)
     r1_hat = np.nan_to_num(num / den * (n - 1) / np.maximum(pairs_ok, 1))
     r1 = np.clip(correct_r1_for_trend_many(r1_hat, n), 0.0, R1_MAX)
+    n_eff = n * (1.0 - r1) / (1.0 + r1)
+    testable = n_eff > 3.0
+    df = np.maximum(n_eff - 2.0, 1.0)
 
     if group is None:
-        var0 = n * (n - 1) * (2 * n + 5) / 18.0
+        var0 = (n * (n - 1) * (2 * n + 5) - _tie_term(X)) / 18.0
         n_typ = n
     else:
         var0 = np.zeros(X.shape[1])
         sizes = []
         for gv in np.unique(group):
-            ng = valid[group == gv].sum(axis=0)
-            var0 += ng * (ng - 1) * (2 * ng + 5) / 18.0
+            rows = group == gv
+            ng = valid[rows].sum(axis=0)
+            var0 += (ng * (ng - 1) * (2 * ng + 5) - _tie_term(X[rows])) / 18.0
             sizes.append(ng)
         n_typ = np.median(np.vstack(sizes), axis=0).astype(int)
     var = var0 * _ratio_vector(n_typ, r1, seasonal=group is not None)
     Z = np.where(S > 0, (S - 1) / np.sqrt(var), np.where(S < 0, (S + 1) / np.sqrt(var), 0.0))
-    n_eff = n * (1.0 - r1) / (1.0 + r1)
-    p = 2 * sps.t.sf(np.abs(Z), np.maximum(n_eff - 2.0, 1.0))
+    p_mk = 2 * sps.t.sf(np.abs(Z), df)
+
+    s2 = den / np.maximum(n - 2, 1)
+    se_adj = np.sqrt(s2 / sxx) * np.sqrt((n - 2.0) / df)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        p_ols = 2 * sps.t.sf(np.abs(b / se_adj), df)
+    p_ols = np.where(se_adj > 0, p_ols, np.where(b != 0, 0.0, 1.0))  # a perfect line
+
+    agree = (np.sign(b) == np.sign(sen)) & (np.sign(sen) == np.sign(S)) & (np.sign(S) != 0)
+    p = np.where(agree, np.maximum(p_mk, p_ols), 1.0)
     enough = (n_typ if group is not None else n) >= MIN_POINTS
-    p = np.where(enough, p, np.nan)
+    p = np.where(enough & testable, p, np.nan)
     sen = np.where(enough, sen, np.nan)
     return sen, p, n, r1
 

@@ -8,7 +8,8 @@ series misleading, and all are handled:
 * neighbouring months are alike, and removing monthly means leaves its own pattern
   (correlation 12, 24, 36 months apart), so the number of independent pairs is estimated with
   Bartlett's formula, Var(r) = (1 + 2 sum_j rho_a(j) rho_b(j)) / n, summed to 36 months, minus the
-  13 degrees of freedom each series used (Bretherton et al. 1999 discuss the lag-1 form);
+  13 degrees of freedom removed from n once (12 monthly means and a trend; Bretherton et al. 1999 discuss
+  the lag-1 form);
 * searching over many lags gives many chances, so the best lag's p-value is multiplied by the
   number of lags tried (Bonferroni).
 """
