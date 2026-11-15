@@ -212,6 +212,9 @@ _reg(
         valid_range=(-5, 5),
         min_per_month=2,
         coord_names=("latitude", "longitude"),
+        # file order (checked against real granules): 0.5° cell centres, 0..360 longitudes
+        native_lats=regular(-89.75, 0.5, 360),
+        native_lons=regular(0.25, 0.5, 720),
         record_start="1992-11",
         notes="Weekly grids on 0..360 longitudes; a month needs at least 2 weeks per cell.",
     )
