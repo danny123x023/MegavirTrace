@@ -247,10 +247,15 @@ def test_yes_no_questions_and_other_measurements_are_not_direction_claims():
     'Is the Arctic getting warmer over the same years?' was read as 'the sea ice is rising'."""
     r = _trend_result(sen=-2.9, direction="falling", region="the Arctic")
     r["units"] = "%"
-    r["variable"] = {"name": "Sea ice concentration", "i18n": {"es": {"name": "Concentración de hielo marino"}}}
+    r["variable"] = {
+        "name": "Sea ice concentration",
+        "i18n": {"es": {"name": "Concentración de hielo marino"}},
+    }
     r["stats"]["per_decade"].update(sen=-2.9, sen_low=-3.6, sen_high=-2.3)
     assert _check("Arctic sea ice is shrinking. Is the Arctic getting warmer over the same years?", r).ok
-    assert _check("El hielo marino del Ártico está disminuyendo. ¿Se está calentando el Ártico?", r, lang="es").ok
+    assert _check(
+        "El hielo marino del Ártico está disminuyendo. ¿Se está calentando el Ártico?", r, lang="es"
+    ).ok
     # warming words do not judge a sea ice trend, but generic direction words still do
     assert _check("Arctic sea ice is shrinking while the air above it is warming.", r).ok
     assert not _check("Arctic sea ice is growing.", r).ok
