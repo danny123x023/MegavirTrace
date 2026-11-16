@@ -285,6 +285,7 @@ const ES: Record<string, string> = {
   "marked": "marcado",
   "Dark": "Oscuro",
   "Menu": "Menú",
+  "GitHub: the source code (opens in a new tab)": "GitHub: el código fuente (se abre en una pestaña nueva)",
   "Type a question first (at least 3 characters).": "Escribe primero una pregunta (al menos 3 caracteres).",
   "Zoom in": "Acercar",
   "Zoom out": "Alejar",
