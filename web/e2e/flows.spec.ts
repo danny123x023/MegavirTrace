@@ -187,7 +187,7 @@ test("phone layout: nothing wider than the screen; a short header whose menu sho
     expect((await menu.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await menu.click();
     await expect(menu).toHaveAttribute("aria-expanded", "true");
-    await expect(links).toHaveCount(8);
+    await expect(links).toHaveCount(9); // the 8 pages and GitHub
     for (const link of await links.all()) {
       await expect(link).toBeInViewport({ ratio: 1 });
       expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -208,6 +208,28 @@ test("phone layout: nothing wider than the screen; a short header whose menu sho
     expect(tiny).toBe(0);
     await page.close();
   }
+});
+
+test("GitHub links: in the menu after Data import, on the landing page after Solve a detective case", async ({ page }) => {
+  await page.goto("/methods");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  const gh = nav.getByRole("link", { name: /GitHub/ });
+  await expect(gh).toHaveAttribute("href", "https://github.com/danny123x023/MegavirTrace");
+  await expect(gh).toHaveAttribute("target", "_blank");
+  await expect(gh).toHaveAttribute("rel", /noopener/);
+  await expect(gh).toHaveAccessibleName(/opens in a new tab/);
+  const names = await nav.getByRole("link").allTextContents();
+  expect(names.slice(-2).map((x) => x.trim())).toEqual(["Data import", "GitHub"]);
+  await expect(gh).toBeInViewport({ ratio: 1 });
+  // the landing page's hero buttons end with the same link
+  await page.goto("/");
+  const cta = page.locator(".lp-cta").first();
+  const buttons = (await cta.getByRole("link").allTextContents()).map((x) => x.trim());
+  expect(buttons).toEqual(["Start exploring", "Solve a detective case", "GitHub"]);
+  const hero = cta.getByRole("link", { name: /GitHub/ });
+  await expect(hero).toHaveAttribute("href", "https://github.com/danny123x023/MegavirTrace");
+  await expect(hero).toHaveAttribute("target", "_blank");
+  await expect(hero).toHaveAttribute("rel", /noopener/);
 });
 
 test("header: full-screen layout and dark mode switches apply and persist", async ({ browser }) => {

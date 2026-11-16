@@ -5,6 +5,7 @@ import { type ReactNode, type RefObject, useEffect, useRef, useState } from "rea
 import Sparkline from "@/components/Sparkline";
 import { apiGet, type CaseSummary, type Variable } from "@/lib/api";
 import { fmtSigned } from "@/lib/format";
+import { GITHUB_URL, GitHubIcon } from "@/components/GitHub";
 import { changeUnit, type Lang, THEME_ES, useI18n, varText } from "@/lib/i18n";
 import { DIVERGING } from "@/lib/palette";
 
@@ -339,6 +340,10 @@ export default function Landing() {
             <div className="lp-cta">
               <Link className="button primary lp-btn" href="/explore">{t("Start exploring")} <Icon d={ICONS.arrow} size={17} /></Link>
               <Link className="button lp-btn" href="/cases">{t("Solve a detective case")}</Link>
+              <a className="button lp-btn lp-btn-github" href={GITHUB_URL} target="_blank" rel="noopener noreferrer" aria-label={t("GitHub: the source code (opens in a new tab)")}>
+                <GitHubIcon size={18} />
+                GitHub
+              </a>
             </div>
             <div className="lp-try">
               <span className="lp-try-label">{t("Try:")}</span>

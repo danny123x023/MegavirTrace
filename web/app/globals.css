@@ -151,6 +151,8 @@ a:hover { color: var(--accent-hover); text-decoration-thickness: 2px; }
 }
 .site-nav a:hover { color: var(--text-primary); background: var(--surface-hover); }
 .site-nav a[aria-current="page"] { color: var(--accent-soft-text); background: var(--accent-soft); font-weight: 600; }
+.site-nav a.nav-github { gap: 6px; }
+.site-nav a.nav-github svg { flex: none; }
 .header-spacer { flex: 1; }
 .menu-btn { display: none; }
 .header-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; } /* right-aligned, also when it wraps to its own row */
@@ -427,27 +429,27 @@ body:has(.embed-card) main { padding: 8px; }
   background: var(--warning); color: var(--warning-ink); font-weight: 600; font-size: 0.875rem;
 }
 
-/* header: one row only when everything shown fits (measured with 8 links: English brand 151 +
-   tagline 206, links 813, tools 243 + full-screen switch 128, gaps and gutters 104; Spanish links 1016,
-   tools 258 + 172, tagline 300).  As space runs out the tagline gives way first, then the full-screen
+/* header: one row only when everything shown fits (measured with 9 links, the 8 pages and GitHub:
+   English brand 151 + tagline 206, links 907, tools 243 + full-screen switch 128, gaps and gutters 104;
+   Spanish links 1110, tools 258 + 172, tagline 300).  As space runs out the tagline gives way first, then the full-screen
    switch; below that the links get their own row, which leaves room for the tagline beside the brand. */
-@media (max-width: 1659px) { .brand-tag { display: none; } }
-@media (max-width: 1449px) { .layout-toggle { display: none; } }
-@media (max-width: 2009px) { :root[lang="es"] .brand-tag { display: none; } }
-@media (max-width: 1709px) { :root[lang="es"] .layout-toggle { display: none; } }
+@media (max-width: 1753px) { .brand-tag { display: none; } }
+@media (max-width: 1543px) { .layout-toggle { display: none; } }
+@media (max-width: 2103px) { :root[lang="es"] .brand-tag { display: none; } }
+@media (max-width: 1803px) { :root[lang="es"] .layout-toggle { display: none; } }
 
 /* two rows: brand and tools on top; the links below wrap onto more rows when needed, so every one
    stays in view (a sideways-scrolling strip hid the last ones without any sign they were there) */
-@media (max-width: 1319px) {
+@media (max-width: 1413px) {
   .site-header { gap: 8px 12px; padding: 10px var(--gutter); }
   .site-nav { order: 3; width: 100%; flex-wrap: wrap; }
 }
-@media (max-width: 1539px) {
+@media (max-width: 1633px) {
   :root[lang="es"] .site-header { gap: 8px 12px; padding: 10px var(--gutter); }
   :root[lang="es"] .site-nav { order: 3; width: 100%; flex-wrap: wrap; }
 }
-@media (min-width: 720px) and (max-width: 1319px) { .brand-tag { display: inline; } }
-@media (min-width: 820px) and (max-width: 1539px) { :root[lang="es"] .brand-tag { display: inline; } }
+@media (min-width: 720px) and (max-width: 1413px) { .brand-tag { display: inline; } }
+@media (min-width: 820px) and (max-width: 1633px) { :root[lang="es"] .brand-tag { display: inline; } }
 
 /* touch screens wider than a phone (tablets): the header controls are touch-sized too */
 @media (pointer: coarse) and (min-width: 641px) {
@@ -755,6 +757,7 @@ body.panel-covering { overflow: hidden; }
 .lp-btn.primary { box-shadow: 0 10px 26px color-mix(in srgb, var(--accent-fill) 32%, transparent); }
 .lp-btn svg, .lp-live-link svg, .lp-more svg, .lp-honest a svg { transition: transform 160ms; }
 .lp-btn:hover svg, .lp-live-link:hover svg, .lp-more a:hover svg, .lp-honest a:hover svg { transform: translateX(3px); }
+.lp-btn-github:hover svg { transform: none; } /* a logo, not an arrow: it stays put */
 .lp-try { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 24px; font-size: 0.8125rem; }
 .lp-try ul { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
 .lp-try-label { color: var(--text-muted); font-weight: 600; }

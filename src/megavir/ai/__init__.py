@@ -716,6 +716,8 @@ def _directions(analyses: dict) -> list[dict]:
                     "direction": r["stats"]["direction"],
                     "significant": bool(r["stats"].get("significant")),
                     "status": r["verdict"].get("status"),
+                    # warming and cooling words judge temperature trends only
+                    "temperature": r.get("units") in (None, "°C"),
                 }
             )
     return out

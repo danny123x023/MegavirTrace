@@ -19,3 +19,6 @@ web/.next/
 web/public/maplibre-gl-worker.mjs
 web/test-results/
 web/playwright-report/
+
+# Demo video renders (web/scripts/demo-video.mjs)
+/demo-video/

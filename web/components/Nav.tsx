@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { GITHUB_URL, GitHubIcon } from "@/components/GitHub";
 import { type Lang, LANGS, useI18n } from "@/lib/i18n";
 
 const LINKS = [
@@ -121,6 +122,10 @@ export default function Nav() {
             {t(l.label)}
           </Link>
         ))}
+        <a className="nav-github" href={GITHUB_URL} target="_blank" rel="noopener noreferrer" aria-label={t("GitHub: the source code (opens in a new tab)")}>
+          <GitHubIcon />
+          GitHub
+        </a>
       </nav>
       <div className="header-tools">
         <span className="select-icon">
