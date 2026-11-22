@@ -152,7 +152,13 @@ EFFECT_WORDS = {
 
 LANGUAGES = tuple(TEMPLATES)
 
-UNIT_WORDS_ES = (("/month", "/mes"), ("/year", "/año"), ("/hour", "/hora"), ("/season", "/estación"), ("molecules", "moléculas"))
+UNIT_WORDS_ES = (
+    ("/month", "/mes"),
+    ("/year", "/año"),
+    ("/hour", "/hora"),
+    ("/season", "/estación"),
+    ("molecules", "moléculas"),
+)
 
 
 # A change in a quantity measured in % (sea ice, snow cover, cloud cover) is in percentage points:

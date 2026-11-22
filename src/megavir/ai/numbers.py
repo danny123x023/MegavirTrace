@@ -260,7 +260,9 @@ def _stats_facts(st: dict, f: Facts) -> None:
         f.pvalues += _nums((st.get(k) or {}).get("p"))
     ols = st.get("ols") or {}
     f.general += _nums([st.get("n"), st.get("years_needed"), st.get("years_more"), st.get("effect_ratio")])
-    f.general += _nums([ols.get("r1"), ols.get("n_eff"), ols.get("resid_sd"), (st.get("mk") or {}).get("tau")])
+    f.general += _nums(
+        [ols.get("r1"), ols.get("n_eff"), ols.get("resid_sd"), (st.get("mk") or {}).get("tau")]
+    )
     acc = st.get("acceleration") or {}
     if acc.get("tested"):
         f.rates += [10 * x for x in _nums([acc.get("slope_early"), acc.get("slope_late")])]
@@ -507,7 +509,9 @@ def _context(text: str, found: FoundNumber) -> tuple[str, str]:
     return t[max(0, found.start - 12) : found.start].lower(), t[found.end : found.end + 60].lower()
 
 
-RATE_TAIL = re.compile(r"per decade|a decade|each decade|/ ?decade|por década|cada década|/ ?década|par décennie|pro jahrzehnt")
+RATE_TAIL = re.compile(
+    r"per decade|a decade|each decade|/ ?decade|por década|cada década|/ ?década|par décennie|pro jahrzehnt"
+)
 YEAR_RATE_TAIL = re.compile(r"per year|a year|each year|/ ?yr|/ ?year|por año|al año|cada año")
 # the unit of a change in a % quantity ("2.9 percentage points per decade") sits between number and tail
 CHANGE_UNIT_HEAD = re.compile(r"^\s*(?:percentage[- ]points?|puntos? porcentuales?|pp\b|p\.\s?p\.)")
@@ -599,17 +603,27 @@ def _check_directions(text: str, directions: list[dict], lang: str, res: CheckRe
             if said_wrong and not said_right:
                 res.direction_errors.append(f"{sent[:120]} (says {said_wrong[0]}, data say {direction})")
             elif significant and denied_right and not said_right:
-                res.direction_errors.append(f"{sent[:120]} (says not {denied_right[0]}, but the {direction} trend is significant)")
+                res.direction_errors.append(
+                    f"{sent[:120]} (says not {denied_right[0]}, but the {direction} trend is significant)"
+                )
             elif not significant and (said_right or said_wrong) and not hedged:
                 w = (said_right or said_wrong)[0]
-                res.direction_errors.append(f"{sent[:120]} (says {w} as a fact, but the tests found no clear trend)")
+                res.direction_errors.append(
+                    f"{sent[:120]} (says {w} as a fact, but the tests found no clear trend)"
+                )
             if other:
                 continue
             if not significant and any(not neg for _, _, neg in sig_claims) and not hedged:
                 res.direction_errors.append(f"{sent[:120]} (calls it significant, but the tests did not)")
-            denies = any(neg for _, _, neg in sig_claims) or "no clear trend" in low or "sin tendencia clara" in low
+            denies = (
+                any(neg for _, _, neg in sig_claims)
+                or "no clear trend" in low
+                or "sin tendencia clara" in low
+            )
             if significant and denies:
-                res.direction_errors.append(f"{sent[:120]} (says it is not significant, but the tests agree it is)")
+                res.direction_errors.append(
+                    f"{sent[:120]} (says it is not significant, but the tests agree it is)"
+                )
 
 
 def allowed_numbers(result: dict) -> list[float]:

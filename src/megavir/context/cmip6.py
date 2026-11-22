@@ -269,7 +269,10 @@ def observed_change(series: dict, var: str) -> tuple[dict | None, str | None]:
     its baseline is 2001–2010 rather than two single years.  Returns (line, note).
     """
     if series.get("mode") != "annual":
-        return None, "The observed line is drawn with yearly values only, because the projections are yearly means."
+        return (
+            None,
+            "The observed line is drawn with yearly values only, because the projections are yearly means.",
+        )
     tested = series.get("tested") or series
     t = np.array([np.nan if x is None else x for x in tested["t"]], float)
     v = np.array([np.nan if x is None else x for x in tested["values"]], float)

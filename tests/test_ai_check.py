@@ -192,7 +192,9 @@ def test_a_trend_the_tests_do_not_support_cannot_be_stated_as_fact():
     res = _check("Rainfall in the whole Earth is rising.", r)
     assert not res.ok and "no clear trend" in res.direction_errors[0]
     assert not _check("The whole Earth shows a significant rise.", r).ok
-    assert _check("The whole Earth shows no clear trend; the best estimate is a rise of 0.082 °C per decade.", r).ok
+    assert _check(
+        "The whole Earth shows no clear trend; the best estimate is a rise of 0.082 °C per decade.", r
+    ).ok
     assert _check("Telling it apart from the ups and downs would need about 40 more years of data.", r).ok
 
 

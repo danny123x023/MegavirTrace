@@ -27,10 +27,9 @@ from megavir.engine.aggregate import (
     per_cell_values,
     region_mean,
 )
-from megavir.engine.stats import MIN_POINTS
 from megavir.engine.cellmap import block_size, cell_trends, merge_blocks
 from megavir.engine.compare import compare_series
-from megavir.engine.stats import NotEnoughData, analyse_trend
+from megavir.engine.stats import MIN_POINTS, NotEnoughData, analyse_trend
 from megavir.engine.verdict import LANGUAGES, compare_verdict, trend_verdict
 from megavir.places.geometry import apply_domain, cells_for
 from megavir.store import GridSpec, Version, active_versions, read_cells, read_land_mask
@@ -457,7 +456,9 @@ def not_enough_message(var, place: str, s, req: dict, rd: RegionalData, why: str
     # how many years the span of the record could fill, even if every month had data
     first, last = int(months.min()), int(months.max())
     possible = sum(
-        1 for y in range(first // 12, last // 12 + 1) if min(last, y * 12 + 11) - max(first, y * 12) + 1 >= need
+        1
+        for y in range(first // 12, last // 12 + 1)
+        if min(last, y * 12 + 11) - max(first, y * 12) + 1 >= need
     )
     if possible < MIN_POINTS:
         if restricted:

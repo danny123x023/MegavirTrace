@@ -50,7 +50,10 @@ def main() -> None:
     for i, n in enumerate(N):
         for j, phi in enumerate(PHI):
             table[i, j] = mean_r1_hat(rng, n, float(phi), REPS)
-        print(f"n={n:4d}  E[r1_hat | 0.5]={table[i, list(PHI).index(0.5)]:.3f}  {time.time() - t0:6.1f}s", flush=True)
+        print(
+            f"n={n:4d}  E[r1_hat | 0.5]={table[i, list(PHI).index(0.5)]:.3f}  {time.time() - t0:6.1f}s",
+            flush=True,
+        )
     # the mean estimate rises with r1; remove Monte Carlo wiggles so the inverse is unique
     table = np.maximum.accumulate(table, axis=1)
     with np.load(DEST) as z:

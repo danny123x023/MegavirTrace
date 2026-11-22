@@ -240,7 +240,9 @@ MONTH_NAMES = {
 }  # fmt: skip
 
 
-def partial_year_note(labels: list[str], last_month: str | None, mode: str, lang: str) -> tuple[str | None, str]:
+def partial_year_note(
+    labels: list[str], last_month: str | None, mode: str, lang: str
+) -> tuple[str | None, str]:
     """(label, note) for a last year that is still under way, e.g. ("2026", " (to October)")."""
     if mode not in ("annual", "monthly", "raw") or not labels or not last_month or last_month.endswith("-12"):
         return None, ""
@@ -252,7 +254,12 @@ def partial_year_note(labels: list[str], last_month: str | None, mode: str, lang
 
 
 def _highlight_text(
-    labels: list[str], values: list, step: Step, units_word: str, lang: str, partial: tuple[str | None, str] = (None, "")
+    labels: list[str],
+    values: list,
+    step: Step,
+    units_word: str,
+    lang: str,
+    partial: tuple[str | None, str] = (None, ""),
 ) -> str:
     """Where each marked label ranks in the series, and whether later values went past it.
 
@@ -324,7 +331,9 @@ def run_trend_step(conn, step: Step, lang: str) -> dict:
     units_word = {"annual": t["years"], "season": t["seasons"].format(s=SEASONS[lang].get(s["season"] or "", "")),
                   "monthly": t["months_unit"]}.get(s["mode"], t["years"])  # fmt: skip
     finding = r["verdict"]["headline"]
-    partial = partial_year_note(s.get("tested", s)["labels"], (r.get("data") or {}).get("last_month"), s["mode"], lang)
+    partial = partial_year_note(
+        s.get("tested", s)["labels"], (r.get("data") or {}).get("last_month"), s["mode"], lang
+    )
     extra = _highlight_text(s["labels"], s["values"], step, units_word, lang, partial)
     pd = r["stats"]["per_decade"]
     labels = s["labels"]
@@ -344,7 +353,11 @@ def run_trend_step(conn, step: Step, lang: str) -> dict:
             "labels": labels,
             "t": s["t"],
             "series": [{"key": "value", "values": s["plot_values"]}],
-            "trend": {"line": s["trend_line"], "low": _per_year(pd["sen_low"]), "high": _per_year(pd["sen_high"])},
+            "trend": {
+                "line": s["trend_line"],
+                "low": _per_year(pd["sen_low"]),
+                "high": _per_year(pd["sen_high"]),
+            },
             "highlight": [labels.index(h) for h in step.highlight if h in labels],
             "units": r["units"],
             "per_decade_label": f"{fmt_signed(pd['sen'], 2, lang=lang)} {change_unit(r['units'], lang, short=True)}",
