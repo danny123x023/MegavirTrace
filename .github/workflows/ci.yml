@@ -129,7 +129,8 @@ jobs:
         working-directory: web
         env:
           MEGAVIR_E2E_ADMIN_TOKEN: e2e-only-token
-        run: npx playwright test
+        # @full-data tests need more than the GISTEMP grid loaded above; they run against a full local database
+        run: npx playwright test --grep-invert @full-data
       - if: failure()
         run: tail -100 api.log web.log
 
