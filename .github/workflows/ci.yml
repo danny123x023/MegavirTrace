@@ -114,6 +114,9 @@ jobs:
       - name: Start the API
         env:
           MEGAVIR_ADMIN_TOKEN: e2e-only-token  # throwaway, for the Admin panel sign-in test
+          # all browser tests come from one address, so the public limit of 60 analyses a minute starved a
+          # late test (tests/conftest.py raises it the same way; test_rate_limit_answers_429 checks the limiter)
+          MEGAVIR_ANALYSIS_PER_MINUTE_PER_IP: "100000"
         run: |
           nohup uv run uvicorn megavir.api.main:app --host 127.0.0.1 --port 8000 > api.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && break; sleep 2; done
@@ -132,7 +135,7 @@ jobs:
         # @full-data tests need more than the GISTEMP grid loaded above; they run against a full local database
         run: npx playwright test --grep-invert @full-data
       - if: failure()
-        run: tail -100 api.log web.log
+        run: tail -n 100 api.log web.log  # the runner's tail rejects the old -100 form
 
   supply-chain:
     name: Secret scan and dependency audit
