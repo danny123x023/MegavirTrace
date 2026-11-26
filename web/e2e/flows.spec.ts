@@ -1,13 +1,18 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+// Tests tagged @full-data need measurements beyond GISTEMP (MERRA-2, AIRS, GRACE and others), so they run
+// against a full local database. CI loads only the public GISTEMP grid and skips them (--grep-invert @full-data).
+const FULL_DATA_PAGES = new Set(["/related"]);
 const PAGES = ["/", "/explore", "/compare", "/related", "/start", "/cases", "/cases/europe-heatwave-2003", "/ask", "/methods", "/imports", "/admin"];
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} theme`, () => {
-    test.use({ colorScheme: scheme });
+    // Reduced motion: the site then shows every element in its final state (no fade-ins), so axe never measures
+    // the contrast of half-faded text (the landing chart's value fades in 1.7 s after load).
+    test.use({ colorScheme: scheme, reducedMotion: "reduce" });
     for (const path of PAGES) {
-      test(`no serious or critical accessibility violations on ${path}`, async ({ page }) => {
+      test(`no serious or critical accessibility violations on ${path}`, { tag: FULL_DATA_PAGES.has(path) ? "@full-data" : [] }, async ({ page }) => {
         const errors: string[] = [];
         page.on("pageerror", (e) => errors.push(String(e)));
         await page.goto(path);
@@ -83,7 +88,7 @@ test("the site has a favicon (tab icon) and a home-screen icon", async ({ page, 
   }
 });
 
-test("new measurements (2026-11-15): listed by theme; a short record opens on monthly values", async ({ page }) => {
+test("new measurements (2026-11-15): listed by theme; a short record opens on monthly values", { tag: "@full-data" }, async ({ page }) => {
   await page.goto("/explore");
   await expect(page.locator(".verdict h2")).toBeVisible();
   const what = page.getByLabel("What");
@@ -135,7 +140,7 @@ test("API keeps the strict Origin check behind the proxy", async ({ request }) =
   expect(r.status()).toBe(403);
 });
 
-test("moves together: verdict, lag chart and the not-a-cause caveat", async ({ page }) => {
+test("moves together: verdict, lag chart and the not-a-cause caveat", { tag: "@full-data" }, async ({ page }) => {
   await page.goto("/related");
   await expect(page.locator(".verdict h2")).toContainText(/move together|No clear relationship/);
   await expect(page.getByText(/not caused by/).first()).toBeVisible();
@@ -412,7 +417,7 @@ test.describe("ask page", () => {
   });
 });
 
-test("detective cases: cards show measured findings; a case runs step by step to its summary", async ({ page }) => {
+test("detective cases: cards show measured findings; a case runs step by step to its summary", { tag: "@full-data" }, async ({ page }) => {
   await page.goto("/cases");
   const cards = page.locator(".case-card");
   await expect(cards.first()).toBeVisible();
@@ -449,7 +454,7 @@ test("detective cases: cards show measured findings; a case runs step by step to
   expect([href.pathname, href.searchParams.get("v"), href.searchParams.get("place")]).toEqual(["/explore", "no2", "preset:north_china_plain"]);
 });
 
-test("cell map of the whole Earth: merged blocks, full detail when zoomed in", async ({ page }) => {
+test("cell map of the whole Earth: merged blocks, full detail when zoomed in", { tag: "@full-data" }, async ({ page }) => {
   await page.goto("/explore?v=air_temp&place=preset%3Aglobe&label=Whole%20Earth");
   await expect(page.locator(".verdict h2")).toBeVisible({ timeout: 120000 });
   const map = page.locator("section[aria-label='Where inside the region']");
